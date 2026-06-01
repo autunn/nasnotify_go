@@ -1,0 +1,24 @@
+[Unit]
+Description = NasNotify
+After = network-online.target nginx.service entry_serv.service storage_serv.service ugbus.service
+Requires = ugbus.service nginx.service
+
+[Service]
+Type = notify
+NotifyAccess = all
+Environment = UGAPP_DATA_DIR=/var/packages/com.autunn.nasnotifyfresh/data
+Environment = UGAPP_LOG_DIR=/var/packages/com.autunn.nasnotifyfresh/data/log
+Environment = UGAPP_HTTP_SOCKET=/var/packages/com.autunn.nasnotifyfresh/data/run/nasnotify.sock
+Environment = UGAPP_HTTP_ADDR=127.0.0.1:21010
+ExecStartPre = /bin/bash /etc/sysconfig/nasnotify.sh
+ExecStart = /var/targets/nasnotify --port=21010
+ExecStopPost = /bin/bash /etc/sysconfig/nasnotify_stop.sh
+SyslogIdentifier = nasnotify
+Restart = on-failure
+TimeoutStopSec = 10s
+StartLimitInterval = 120s
+StartLimitBurst = 5
+RestartSec = 2
+
+[Install]
+WantedBy = multi-user.target

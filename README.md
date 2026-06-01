@@ -8,7 +8,7 @@ NasNotify-Go 是一个面向绿联 NAS 的通知与控制中心。当前版本�
 - **图片卡片优先**：常用查询命令优先渲染为黑金风格 PNG 卡片，发送失败时回退为文本或企业微信图文消息。
 - **双微信通道**：保留企业微信配置与回调菜单，新增微信 ClawBot 扫码绑定与消息轮询。
 - **温度兼容解析**：CPU 温度会兼容 `cpuTemp`、`temperature`、`cpu_temp`、`cpu_temperature` 等字段别名。
-- **跨平台构建**：Go 后端可直接运行；GitHub Actions 和本地脚本可构建 macOS 桌面窗口应用；Docker 镜像会内置前端静态资源。
+- **跨平台构建**：Go 后端可直接运行；同一仓库可以分别产出 macOS DMG、Docker 镜像和绿联 UPK。
 
 ## 项目结构
 
@@ -24,7 +24,9 @@ nasnotify_go/
 ├── internal/wechatgateway/     # 内置微信网关状态、二维码、轮询服务
 ├── frontend/ugreen-app/        # Vite 黑金后台页面
 ├── macos/NasNotifyGo/          # macOS 桌面窗口壳应用
-├── scripts/build-macos-app.sh  # 本地 macOS app 构建脚本
+├── packaging/ugreen-native-app/# 绿联 UPK 打包骨架
+├── scripts/                    # macOS / UPK 构建脚本
+├── tools/ugcli/                # 本地放置 ugcli，默认不提交二进制
 ├── Dockerfile
 └── go.mod
 ```
@@ -140,6 +142,39 @@ docker run --rm -p 5080:5080 \
 
 Dockerfile 会先构建 Vite 前端，再把 `dist` 复制到最终镜像的 `/app/www`。
 
+## 绿联 UPK 构建
+
+UPK 和 DMG、Docker 共用同一套 Go API、Vite 前端和图片卡片逻辑，但产物独立输出。
+
+本地 Windows 构建：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build-ugreen-native-app.ps1 -Build 1 -Arch all
+```
+
+构建流程会执行：
+
+1. 安装/复用前端依赖并执行 Vite 构建。
+2. 将 `frontend/ugreen-app/dist` 同步到 `packaging/ugreen-native-app/rootfs_common/www`。
+3. 交叉编译 Linux `amd64`、`arm64` 后端。
+4. 调用 `ugcli check` 和 `ugcli pack` 生成 UPK。
+
+默认 `ugcli` 路径为：
+
+```text
+tools/ugcli/ugcli-v1.1.0.12-windows-amd64.exe
+```
+
+该二进制默认不提交到 Git。也可以通过 `-UgcliPath` 指定本机其他路径。
+
+生成文件位于：
+
+```text
+packaging/ugreen-native-app/build_dir/pkgs/upk/
+```
+
+UPK 访问模式保持官方应用式 route 打开：NAS 门户、DDNS、UGLink 都走主入口路由和 Unix socket 代理，不需要给用户额外暴露端口。
+
 ## 验证命令
 
 ```bash
@@ -147,9 +182,10 @@ go test ./...
 node --check frontend/ugreen-app/src/main.js
 npm --prefix frontend/ugreen-app ci
 npm --prefix frontend/ugreen-app run build
+node scripts/build-ugreen-frontend.mjs
 ```
 
-`node_modules/`、`frontend/ugreen-app/dist/`、`build/`、`dist/` 均不提交到仓库。
+`node_modules/`、`frontend/ugreen-app/dist/`、`build/`、`dist/`、UPK 打包输出和 `ugcli` 二进制均不提交到仓库。
 
 ## 参考
 

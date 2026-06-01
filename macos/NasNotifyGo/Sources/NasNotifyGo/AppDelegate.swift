@@ -83,6 +83,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Bundle.main.resourceURL!
     }
 
+    private var backendURL: URL {
+        resourcesURL.appendingPathComponent("nasnotify-go-app")
+    }
+
+    private var bundledWWWURL: URL {
+        resourcesURL.appendingPathComponent("www", isDirectory: true)
+    }
+
     private var serviceRunnerURL: URL {
         resourcesURL.appendingPathComponent("service-runner.sh")
     }
@@ -93,6 +101,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var dashboardURL: URL {
         URL(string: "http://localhost:\(port)")!
+    }
+
+    private var serviceBuildMarkerURL: URL {
+        appSupportURL.appendingPathComponent(".service_build_marker")
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -290,6 +302,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             && FileManager.default.fileExists(atPath: appPlistURL.path)
     }
 
+    private func currentServiceBuildMarker() -> String {
+        var parts = [Bundle.main.bundlePath]
+        appendFileMarker(backendURL, to: &parts)
+        appendFileMarker(serviceRunnerURL, to: &parts)
+        appendFileMarker(bundledWWWURL.appendingPathComponent("index.html"), to: &parts)
+        appendFileMarker(bundledWWWURL.appendingPathComponent("version.json"), to: &parts)
+
+        let assetURL = bundledWWWURL.appendingPathComponent("assets", isDirectory: true)
+        if let enumerator = FileManager.default.enumerator(
+            at: assetURL,
+            includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) {
+            for case let url as URL in enumerator {
+                appendFileMarker(url, to: &parts)
+            }
+        }
+
+        return parts.joined(separator: "|")
+    }
+
+    private func appendFileMarker(_ url: URL, to parts: inout [String]) {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path) else {
+            parts.append("\(url.path):missing")
+            return
+        }
+
+        let size = (attrs[.size] as? NSNumber)?.int64Value ?? 0
+        let modifiedAt = ((attrs[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0).rounded()
+        parts.append("\(url.path):\(size):\(Int(modifiedAt))")
+    }
+
+    private func serviceNeedsRefresh(currentMarker: String) -> Bool {
+        let previous = (try? String(contentsOf: serviceBuildMarkerURL, encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return previous != currentMarker
+    }
+
+    private func writeServiceBuildMarker(_ marker: String) {
+        try? marker.write(to: serviceBuildMarkerURL, atomically: true, encoding: .utf8)
+    }
+
     private func startService(openDashboard: Bool) {
         DispatchQueue.global(qos: .utility).async {
             let ok = self.startServiceBlocking()
@@ -310,9 +364,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func startServiceBlocking() -> Bool {
         prepareDirectories()
+        let marker = currentServiceBuildMarker()
 
         if isServiceRunning() {
-            return true
+            if serviceNeedsRefresh(currentMarker: marker) {
+                stopServiceBlocking()
+                Thread.sleep(forTimeInterval: 0.6)
+            } else {
+                return true
+            }
         }
 
         if FileManager.default.fileExists(atPath: servicePlistURL.path) {
@@ -330,6 +390,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         for _ in 0..<30 {
             if isServiceRunning() {
+                writeServiceBuildMarker(marker)
                 return true
             }
 
@@ -428,11 +489,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let request = URLRequest(url: dashboardURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)
 
         if reload || webView.url == nil {
-            webView.load(request)
+            loadDashboard(webView, request: request, clearingCache: reload)
         }
 
         dashboardWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func loadDashboard(_ webView: WKWebView, request: URLRequest, clearingCache: Bool) {
+        guard clearingCache else {
+            webView.load(request)
+            return
+        }
+
+        let cacheTypes: Set<String> = [
+            WKWebsiteDataTypeDiskCache,
+            WKWebsiteDataTypeMemoryCache
+        ]
+        WKWebsiteDataStore.default().removeData(ofTypes: cacheTypes, modifiedSince: Date.distantPast) {
+            DispatchQueue.main.async {
+                webView.load(request)
+            }
+        }
     }
 
     @discardableResult

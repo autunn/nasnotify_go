@@ -1,0 +1,13 @@
+/var/ugreen/log/nasnotify.log /var/ugreen/log/nasnotify.slog
+{
+        size 10M
+        rotate 4
+        missingok
+        notifempty
+        compress
+        delaycompress
+        sharedscripts
+        postrotate
+                /usr/lib/rsyslog/rsyslog-rotate
+        endscript
+}

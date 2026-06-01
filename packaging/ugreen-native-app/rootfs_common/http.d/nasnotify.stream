@@ -1,0 +1,5 @@
+upstream nasnotify_backend {
+    server unix:/var/packages/com.autunn.nasnotifyfresh/data/run/nasnotify.sock;
+    keepalive 12;
+    keepalive_timeout 300s;
+}

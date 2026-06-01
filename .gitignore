@@ -6,3 +6,4 @@
 /frontend/ugreen-app/node_modules/
 /frontend/ugreen-app/dist/
 /frontend/ugreen-app/builder/*.tar
+/tools/ugcli/*.exe

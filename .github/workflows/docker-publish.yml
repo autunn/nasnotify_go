@@ -1,13 +1,9 @@
 name: Build and Push Docker Image
 
 on:
-  push:
-    branches: 
-      - main
-      - master
   workflow_dispatch:
 
-# 消除 Node.js 20 弃用警告的环境变量
+# Keep JavaScript actions on the current runtime.
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
