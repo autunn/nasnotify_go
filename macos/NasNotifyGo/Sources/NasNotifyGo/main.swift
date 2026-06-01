@@ -12,7 +12,10 @@ if let resourceURL = Bundle.main.resourceURL?.appendingPathComponent("AppIcon.pn
 let delegate = AppDelegate()
 app.delegate = delegate
 
-// Menu bar app: hide Dock icon by default.
-app.setActivationPolicy(.accessory)
+if CommandLine.arguments.contains("--login-item") {
+    app.setActivationPolicy(.accessory)
+} else {
+    app.setActivationPolicy(.regular)
+}
 
 app.run()

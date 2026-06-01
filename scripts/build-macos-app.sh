@@ -18,6 +18,13 @@ esac
 rm -rf "$BUILD_DIR" "$APP_DIR"
 mkdir -p "$BUILD_DIR" "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources" "$DIST_DIR"
 
+echo "==> Build Vite frontend"
+(
+  cd "$ROOT_DIR/frontend/ugreen-app"
+  npm ci
+  npm run build
+)
+
 echo "==> Build Go backend ($GOARCH)"
 (
   cd "$ROOT_DIR"
@@ -26,7 +33,7 @@ echo "==> Build Go backend ($GOARCH)"
     -o "$BUILD_DIR/nasnotify-go-app" ./cmd/nasnotify
 )
 
-echo "==> Build Swift menu bar app"
+echo "==> Build Swift desktop app"
 (
   cd "$ROOT_DIR/macos/NasNotifyGo"
   swift build -c release
@@ -34,6 +41,7 @@ echo "==> Build Swift menu bar app"
 
 SWIFT_BIN="$ROOT_DIR/macos/NasNotifyGo/.build/release/NasNotifyGo"
 ICON_ICNS="$ROOT_DIR/macos/NasNotifyGo/Sources/NasNotifyGo/Resources/AppIcon.icns"
+ICON_PNG="$ROOT_DIR/macos/NasNotifyGo/Sources/NasNotifyGo/Resources/AppIcon.png"
 
 if [[ ! -f "$SWIFT_BIN" ]]; then
   echo "Swift binary not found: $SWIFT_BIN" >&2
@@ -45,9 +53,16 @@ if [[ ! -f "$ICON_ICNS" ]]; then
   exit 1
 fi
 
+if [[ ! -f "$ICON_PNG" ]]; then
+  echo "App icon png not found: $ICON_PNG" >&2
+  exit 1
+fi
+
 cp "$SWIFT_BIN" "$APP_DIR/Contents/MacOS/NasNotifyGo"
 cp "$BUILD_DIR/nasnotify-go-app" "$APP_DIR/Contents/Resources/nasnotify-go-app"
 cp "$ICON_ICNS" "$APP_DIR/Contents/Resources/AppIcon.icns"
+cp "$ICON_PNG" "$APP_DIR/Contents/Resources/AppIcon.png"
+cp -R "$ROOT_DIR/frontend/ugreen-app/dist" "$APP_DIR/Contents/Resources/www"
 
 cat > "$APP_DIR/Contents/Resources/service-runner.sh" <<'RUNNER'
 #!/usr/bin/env bash
@@ -87,8 +102,11 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
   <string>$VERSION</string>
   <key>LSMinimumSystemVersion</key>
   <string>11.0</string>
-  <key>LSUIElement</key>
-  <true/>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key>
+    <true/>
+  </dict>
   <key>NSHighResolutionCapable</key>
   <true/>
 </dict>

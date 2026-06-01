@@ -1,0 +1,23 @@
+{
+  "name": "nasnotify-go-frontend",
+  "private": true,
+  "appId": "com.autunn.nasnotifyfresh",
+  "version": "1.0.1",
+  "type": "module",
+  "author": "Autunn",
+  "description": "NasNotify Go desktop frontend.",
+  "releaseName": "com.autunn.nasnotifyfresh",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite"
+  },
+  "dependencies": {
+    "@ugreen-nas/core": "^1.7.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-legacy": "^8.0.2",
+    "@ugreen-nas/builder-open": "^0.0.8",
+    "terser": "^5.44.1",
+    "vite": "^8.0.14"
+  }
+}

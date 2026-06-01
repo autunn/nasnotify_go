@@ -23,6 +23,13 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/ugreen-app/package-lock.json
+
       - name: Set version
         run: |
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
@@ -40,7 +47,14 @@ jobs:
             -ldflags "-s -w -X main.Version=${APP_VERSION}" \
             -o dist/backend/nasnotify-go-app ./cmd/nasnotify
 
-      - name: Build Swift menu bar app
+      - name: Build Vite frontend
+        run: |
+          set -e
+          cd frontend/ugreen-app
+          npm ci
+          npm run build
+
+      - name: Build Swift desktop app
         run: |
           set -e
           cd macos/NasNotifyGo
@@ -62,6 +76,7 @@ jobs:
 
           cp "macos/NasNotifyGo/.build/release/NasNotifyGo" "${MACOS}/NasNotify-Go"
           cp "dist/backend/nasnotify-go-app" "${RESOURCES}/nasnotify-go-app"
+          cp -R "frontend/ugreen-app/dist" "${RESOURCES}/www"
           cp "${ICON_ICNS}" "${RESOURCES}/AppIcon.icns"
           cp "${ICON_PNG}" "${RESOURCES}/AppIcon.png"
 
@@ -119,8 +134,11 @@ jobs:
             <key>LSMinimumSystemVersion</key>
             <string>11.0</string>
 
-            <key>LSUIElement</key>
-            <true/>
+            <key>NSAppTransportSecurity</key>
+            <dict>
+              <key>NSAllowsLocalNetworking</key>
+              <true/>
+            </dict>
 
             <key>NSHighResolutionCapable</key>
             <true/>

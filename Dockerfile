@@ -9,7 +9,7 @@ ARG TARGETARCH
 WORKDIR /app
 RUN apk add --no-cache git
 
-# 复制整个项目（包含 go.mod, cmd, internal, templates 等）
+# 复制整个项目（包含 go.mod, cmd, internal, frontend 等）
 COPY . .
 
 RUN go mod download
@@ -18,6 +18,14 @@ RUN go mod download
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
     -ldflags "-s -w -X main.Version=${APP_VERSION}" \
     -o nasnotify-go-app ./cmd/nasnotify
+
+# 构建 Vite 前端，最终镜像会把 dist 放到 /app/www
+FROM --platform=$BUILDPLATFORM node:24-alpine AS frontend
+WORKDIR /app/frontend/ugreen-app
+COPY frontend/ugreen-app/package*.json ./
+RUN npm ci
+COPY frontend/ugreen-app/ ./
+RUN npm run build
 
 # ==========================================
 # 最终运行阶段：拉取对应架构的 alpine 基础镜像
@@ -31,6 +39,7 @@ RUN apk add --no-cache ca-certificates tzdata \
 
 # 把极速编译好的二进制文件复制过来
 COPY --from=builder /app/nasnotify-go-app .
+COPY --from=frontend /app/frontend/ugreen-app/dist ./www
 EXPOSE 5080
 VOLUME ["/app/data", "/app/config"]
 CMD ["./nasnotify-go-app"]

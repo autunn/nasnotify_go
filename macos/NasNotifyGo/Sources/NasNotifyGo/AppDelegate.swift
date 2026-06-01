@@ -1,5 +1,6 @@
 import Cocoa
 import Foundation
+import WebKit
 
 extension String {
     var shellQuoted: String {
@@ -17,6 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var statusItemTitle = NSMenuItem()
     private var openDashboardItem = NSMenuItem()
+    private var openBrowserItem = NSMenuItem()
     private var startStopItem = NSMenuItem()
     private var restartItem = NSMenuItem()
     private var autoStartItem = NSMenuItem()
@@ -24,6 +26,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var openLogItem = NSMenuItem()
     private var quitItem = NSMenuItem()
 
+    private var dashboardWindow: NSWindow?
+    private var dashboardWebView: WKWebView?
+    private var runningMenuBarIcon: NSImage?
+    private var stoppedMenuBarIcon: NSImage?
     private var timer: Timer?
 
     private var isLoginLaunch: Bool {
@@ -77,10 +83,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Bundle.main.resourceURL!
     }
 
-    private var backendURL: URL {
-        resourcesURL.appendingPathComponent("nasnotify-go-app")
-    }
-
     private var serviceRunnerURL: URL {
         resourcesURL.appendingPathComponent("service-runner.sh")
     }
@@ -118,10 +120,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         timer?.invalidate()
     }
 
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
     private func createMenuBarItem() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.title = "NAS"
-        item.button?.toolTip = "NasNotify-Go"
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        if let button = item.button {
+            if let icon = menuBarIcon(running: false) {
+                button.title = ""
+                button.image = icon
+                button.imagePosition = .imageOnly
+            } else {
+                button.title = "NAS"
+            }
+            button.toolTip = "NasNotify-Go"
+        }
         item.menu = menu
         statusItem = item
     }
@@ -135,10 +149,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
 
-        openDashboardItem = NSMenuItem(title: "打开后台", action: #selector(openDashboard), keyEquivalent: "o")
+        openDashboardItem = NSMenuItem(title: "打开桌面窗口", action: #selector(openDashboard), keyEquivalent: "o")
         openDashboardItem.target = self
         openDashboardItem.isEnabled = true
         menu.addItem(openDashboardItem)
+
+        openBrowserItem = NSMenuItem(title: "在浏览器中打开", action: #selector(openDashboardInBrowser), keyEquivalent: "b")
+        openBrowserItem.target = self
+        openBrowserItem.isEnabled = true
+        menu.addItem(openBrowserItem)
+
+        menu.addItem(.separator())
 
         startStopItem = NSMenuItem(title: "启动服务", action: #selector(toggleService), keyEquivalent: "s")
         startStopItem.target = self
@@ -171,7 +192,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
 
-        quitItem = NSMenuItem(title: "退出菜单栏 App", action: #selector(quitApp), keyEquivalent: "q")
+        quitItem = NSMenuItem(title: "退出 NasNotify-Go", action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
         quitItem.isEnabled = true
         menu.addItem(quitItem)
@@ -185,13 +206,65 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let running = isServiceRunning()
         let autoStart = isAutoStartEnabled()
 
-        statusItem?.button?.title = running ? "NAS ●" : "NAS ○"
-        statusItem?.button?.toolTip = running ? "NasNotify-Go 正在运行" : "NasNotify-Go 已停止"
+        if let button = statusItem?.button {
+            if let icon = menuBarIcon(running: running) {
+                button.title = ""
+                button.image = icon
+                button.imagePosition = .imageOnly
+            } else {
+                button.title = running ? "NAS ●" : "NAS ○"
+            }
+            button.toolTip = running ? "NasNotify-Go 正在运行" : "NasNotify-Go 已停止"
+        }
 
         statusItemTitle.title = running ? "NasNotify-Go：运行中" : "NasNotify-Go：已停止"
         startStopItem.title = running ? "停止服务" : "启动服务"
         restartItem.isEnabled = running
+        openDashboardItem.isEnabled = true
+        openBrowserItem.isEnabled = true
         autoStartItem.title = autoStart ? "关闭登录自启动" : "开启登录自启动"
+    }
+
+    private func menuBarIcon(running: Bool) -> NSImage? {
+        if running, let icon = runningMenuBarIcon {
+            return icon
+        }
+        if !running, let icon = stoppedMenuBarIcon {
+            return icon
+        }
+
+        guard let sourceURL = Bundle.main.resourceURL?.appendingPathComponent("AppIcon.png"),
+              let source = NSImage(contentsOf: sourceURL) else {
+            return nil
+        }
+
+        let size = NSSize(width: 20, height: 20)
+        let image = NSImage(size: size)
+        image.lockFocus()
+        source.draw(
+            in: NSRect(x: 1.5, y: 1.5, width: 17, height: 17),
+            from: .zero,
+            operation: .sourceOver,
+            fraction: running ? 1.0 : 0.58
+        )
+
+        let dotRect = NSRect(x: 14.2, y: 2.0, width: 4.8, height: 4.8)
+        (running ? NSColor.systemGreen : NSColor.systemGray).setFill()
+        NSBezierPath(ovalIn: dotRect).fill()
+        NSColor.black.withAlphaComponent(0.35).setStroke()
+        let dotStroke = NSBezierPath(ovalIn: dotRect)
+        dotStroke.lineWidth = 0.6
+        dotStroke.stroke()
+        image.unlockFocus()
+        image.isTemplate = false
+
+        if running {
+            runningMenuBarIcon = image
+        } else {
+            stoppedMenuBarIcon = image
+        }
+
+        return image
     }
 
     private func prepareDirectories() {
@@ -226,7 +299,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
                 if ok {
                     if openDashboard {
-                        self.openDashboard()
+                        self.showDashboardWindow(reload: true)
                     }
                 } else {
                     self.alert("NasNotify-Go 启动失败", "请查看日志：\n\(self.logFileURL.path)")
@@ -312,7 +385,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.refreshMenu()
 
                 if ok {
-                    self.openDashboard()
+                    self.showDashboardWindow(reload: true)
                 } else {
                     self.alert("NasNotify-Go 重启失败", "请查看日志：\n\(self.logFileURL.path)")
                 }
@@ -321,7 +394,77 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openDashboard() {
-        NSWorkspace.shared.open(dashboardURL)
+        if isServiceRunning() {
+            showDashboardWindow(reload: false)
+        } else {
+            startService(openDashboard: true)
+        }
+    }
+
+    @objc private func openDashboardInBrowser() {
+        if isServiceRunning() {
+            NSWorkspace.shared.open(dashboardURL)
+            return
+        }
+
+        DispatchQueue.global(qos: .utility).async {
+            let ok = self.startServiceBlocking()
+
+            DispatchQueue.main.async {
+                self.refreshMenu()
+                if ok {
+                    NSWorkspace.shared.open(self.dashboardURL)
+                } else {
+                    self.alert("NasNotify-Go 启动失败", "请查看日志：\n\(self.logFileURL.path)")
+                }
+            }
+        }
+    }
+
+    private func showDashboardWindow(reload: Bool) {
+        NSApp.setActivationPolicy(.regular)
+
+        let webView = ensureDashboardWindow()
+        let request = URLRequest(url: dashboardURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)
+
+        if reload || webView.url == nil {
+            webView.load(request)
+        }
+
+        dashboardWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @discardableResult
+    private func ensureDashboardWindow() -> WKWebView {
+        if let webView = dashboardWebView, dashboardWindow != nil {
+            return webView
+        }
+
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .default()
+        configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
+
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.allowsBackForwardNavigationGestures = true
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1180, height: 760),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "NasNotify-Go"
+        window.minSize = NSSize(width: 980, height: 640)
+        window.backgroundColor = .black
+        window.titlebarAppearsTransparent = true
+        window.isReleasedWhenClosed = false
+        window.contentView = webView
+        window.center()
+
+        dashboardWindow = window
+        dashboardWebView = webView
+        return webView
     }
 
     @objc private func toggleAutoStart() {
@@ -428,7 +571,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             try plist.write(to: appPlistURL, atomically: true, encoding: .utf8)
             _ = run("/bin/chmod 644 \(appPlistURL.path.shellQuoted)")
         } catch {
-            alert("写入菜单栏自启动失败", error.localizedDescription)
+            alert("写入应用自启动失败", error.localizedDescription)
         }
     }
 
@@ -441,7 +584,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let alert = NSAlert()
         alert.messageText = "是否开启登录自启动？"
-        alert.informativeText = "开启后，Mac mini 登录后会自动启动 NasNotify-Go 后台服务，并显示菜单栏图标。"
+        alert.informativeText = "开启后，macOS 登录后会自动启动 NasNotify-Go 后台服务，并保留菜单栏入口。"
         alert.addButton(withTitle: "开启自启动")
         alert.addButton(withTitle: "暂不启用")
 

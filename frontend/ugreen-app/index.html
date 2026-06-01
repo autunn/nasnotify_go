@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NasNotify</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <script>
+    (function () {
+      const path = window.location.pathname || "/";
+      const hasFileSuffix = /\/[^/]+\.[a-zA-Z0-9]+$/.test(path);
+      let basePath = "/";
+
+      if (path !== "/") {
+        if (hasFileSuffix) {
+          basePath = path.replace(/[^/]+$/, "");
+        } else {
+          basePath = path.endsWith("/") ? path : `${path}/`;
+        }
+      }
+
+      document.write(`<base href="${basePath.replace(/"/g, "&quot;")}">`);
+    })();
+  </script>
+  <link rel="stylesheet" href="./src/styles.css">
+</head>
+<body>
+  <script>
+    window.addEventListener("load", function () {
+      window._ugGlobal_isload = true;
+    });
+  </script>
+  <div id="app"></div>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
