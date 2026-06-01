@@ -2,14 +2,11 @@
     "id": "com.autunn.nasnotifyfresh",
     "name": "nasnotify-go-frontend",
     "author": "Autunn",
-    "version": 52,
-    "fullVersion": "v1.0.1.52",
-    "buildTime": "26/06/02 03:27",
+    "version": 53,
+    "fullVersion": "v1.0.1.53",
+    "buildTime": "26/06/02 04:18",
     "description": "NasNotify Go desktop frontend.",
-    "supportLanguages": [
-        "zh-CN",
-        "en-US"
-    ],
+    "supportLanguages": [],
     "windowConfig": {
         "width": 1440,
         "height": 900,
@@ -26,10 +23,5 @@
     },
     "widgets": [],
     "trays": [],
-    "contextMenu": [],
-    "dependenciesInfo": {
-        "ugos-core": "1.6.19",
-        "ugos-pro-builder": "1.2.70"
-    },
-    "childApp": {}
+    "contextMenu": []
 }

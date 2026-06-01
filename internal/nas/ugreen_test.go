@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"nasnotify-go/internal/config"
 )
 
 func TestWechatProgressBar(t *testing.T) {
@@ -153,6 +155,38 @@ func TestParseUGreenPerfCommand(t *testing.T) {
 					tt.command, action, mode, tt.wantAction, tt.wantMode)
 			}
 		})
+	}
+}
+
+func TestBuildLocalUGreenConfigUsesConfiguredHost(t *testing.T) {
+	cfg := config.AppConfig{
+		LocalNasName:     "书房绿联 NAS",
+		LocalNasHost:     "192.168.1.9",
+		LocalNasPort:     10000,
+		LocalNasUsername: "admin",
+		LocalNasPassword: "secret",
+	}
+
+	device := buildLocalUGreenConfig(cfg)
+	if device == nil {
+		t.Fatalf("expected local UGreen config")
+	}
+	if device.IpPort != "192.168.1.9:10000" {
+		t.Fatalf("IpPort = %q, want %q", device.IpPort, "192.168.1.9:10000")
+	}
+}
+
+func TestBuildLocalUGreenConfigDefaultsHostForUPK(t *testing.T) {
+	cfg := config.AppConfig{
+		LocalNasUsername: "admin",
+	}
+
+	device := buildLocalUGreenConfig(cfg)
+	if device == nil {
+		t.Fatalf("expected local UGreen config")
+	}
+	if device.IpPort != "127.0.0.1:9999" {
+		t.Fatalf("IpPort = %q, want %q", device.IpPort, "127.0.0.1:9999")
 	}
 }
 

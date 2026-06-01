@@ -3,8 +3,11 @@ package config
 import (
 	"encoding/json"
 	"log"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -15,6 +18,7 @@ const (
 	DefaultIntervalMinutes             = 5
 	DefaultSystemStatusIntervalMinutes = 60
 	DefaultWechatGatewayURL            = "http://127.0.0.1:5091"
+	DefaultLocalNasHost                = "127.0.0.1"
 )
 
 var (
@@ -48,6 +52,7 @@ type AppConfig struct {
 	WechatBoundAt       string `json:"wechat_bound_at"`
 
 	LocalNasName     string `json:"local_nas_name"`
+	LocalNasHost     string `json:"local_nas_host"`
 	LocalNasPort     int    `json:"local_nas_port"`
 	LocalNasUsername string `json:"local_nas_username"`
 	LocalNasPassword string `json:"local_nas_password"`
@@ -112,6 +117,7 @@ func InitConfig() {
 			IntervalMinutes:             DefaultIntervalMinutes,
 			SystemStatusIntervalMinutes: DefaultSystemStatusIntervalMinutes,
 			WechatGatewayURL:            DefaultWechatGatewayURL,
+			LocalNasHost:                DefaultLocalNasHost,
 			LocalNasPort:                9999,
 		}
 		return
@@ -124,6 +130,7 @@ func InitConfig() {
 			IntervalMinutes:             DefaultIntervalMinutes,
 			SystemStatusIntervalMinutes: DefaultSystemStatusIntervalMinutes,
 			WechatGatewayURL:            DefaultWechatGatewayURL,
+			LocalNasHost:                DefaultLocalNasHost,
 			LocalNasPort:                9999,
 		}
 		return
@@ -137,6 +144,7 @@ func InitConfig() {
 			IntervalMinutes:             DefaultIntervalMinutes,
 			SystemStatusIntervalMinutes: DefaultSystemStatusIntervalMinutes,
 			WechatGatewayURL:            DefaultWechatGatewayURL,
+			LocalNasHost:                DefaultLocalNasHost,
 			LocalNasPort:                9999,
 		}
 		return
@@ -216,6 +224,9 @@ func MergeWithExistingSensitiveFields(existing, incoming AppConfig) AppConfig {
 	if incoming.LocalNasPassword == "" {
 		incoming.LocalNasPassword = existing.LocalNasPassword
 	}
+	if strings.TrimSpace(incoming.LocalNasHost) == "" {
+		incoming.LocalNasHost = existing.LocalNasHost
+	}
 	if incoming.ZSpace == nil {
 		incoming.ZSpace = cloneZSpace(existing.ZSpace)
 	} else {
@@ -280,6 +291,7 @@ func normalizeConfigLocked() {
 	if Config.LocalNasPort <= 0 {
 		Config.LocalNasPort = 9999
 	}
+	Config.LocalNasHost, Config.LocalNasPort = normalizeLocalNasEndpoint(Config.LocalNasHost, Config.LocalNasPort)
 	if strings.TrimSpace(Config.LocalNasName) == "" {
 		Config.LocalNasName = "本机绿联 NAS"
 	}
@@ -295,6 +307,44 @@ func normalizeConfigLocked() {
 	if Config.FnOs == nil {
 		Config.FnOs = []FnOsConfig{}
 	}
+}
+
+func normalizeLocalNasEndpoint(host string, port int) (string, int) {
+	if port <= 0 {
+		port = 9999
+	}
+
+	host = strings.TrimSpace(host)
+	if host != "" && strings.Contains(host, "://") {
+		if parsed, err := url.Parse(host); err == nil {
+			if parsed.Host != "" {
+				host = parsed.Host
+			} else if parsed.Path != "" {
+				host = parsed.Path
+			}
+		}
+	}
+
+	host = strings.TrimSpace(host)
+	if cut := strings.IndexAny(host, "/?#"); cut >= 0 {
+		host = host[:cut]
+	}
+	host = strings.TrimSpace(host)
+
+	if parsedHost, parsedPort, err := net.SplitHostPort(host); err == nil {
+		host = parsedHost
+		if parsedPortNumber, parseErr := strconv.Atoi(parsedPort); parseErr == nil && parsedPortNumber > 0 {
+			port = parsedPortNumber
+		}
+	} else if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		host = strings.TrimSuffix(strings.TrimPrefix(host, "["), "]")
+	}
+
+	host = strings.TrimSpace(host)
+	if host == "" {
+		host = DefaultLocalNasHost
+	}
+	return host, port
 }
 
 func cloneZSpace(in []ZSpaceConfig) []ZSpaceConfig {

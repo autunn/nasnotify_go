@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"sort"
 	"strconv"
@@ -45,10 +46,14 @@ func buildLocalUGreenConfig(cfg config.AppConfig) *config.UGreenConfig {
 	if port <= 0 {
 		port = 9999
 	}
+	host := strings.TrimSpace(cfg.LocalNasHost)
+	if host == "" {
+		host = config.DefaultLocalNasHost
+	}
 
 	return &config.UGreenConfig{
 		ID:             "local-ugreen",
-		IpPort:         fmt.Sprintf("127.0.0.1:%d", port),
+		IpPort:         net.JoinHostPort(host, strconv.Itoa(port)),
 		Username:       username,
 		Password:       cfg.LocalNasPassword,
 		NotifyTypeName: name,

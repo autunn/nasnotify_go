@@ -125,27 +125,28 @@ func CreateEnterpriseWechatMenu() error {
 	payload := map[string]any{
 		"button": []map[string]any{
 			{
-				"name": "监控",
+				"name": "查询",
 				"sub_button": []map[string]any{
-					{"type": "click", "name": "系统概览", "key": "GET_UGREEN_INFO"},
+					{"type": "click", "name": "系统状态", "key": "GET_UGREEN_INFO"},
+					{"type": "click", "name": "系统通知", "key": "GET_UGREEN_NOTIFY"},
 					{"type": "click", "name": "存储状态", "key": "GET_UGREEN_STORAGE"},
 					{"type": "click", "name": "UPS 电源", "key": "GET_UGREEN_UPS"},
+					{"type": "click", "name": "Docker", "key": "GET_UGREEN_DOCKER"},
 				},
 			},
 			{
 				"name": "服务",
 				"sub_button": []map[string]any{
-					{"type": "click", "name": "Docker", "key": "GET_UGREEN_DOCKER"},
 					{"type": "click", "name": "进程列表", "key": "GET_UGREEN_PS"},
 					{"type": "click", "name": "备份任务", "key": "GET_UGREEN_BACKUP"},
+					{"type": "click", "name": "电源配置", "key": "GET_UGREEN_POWER"},
+					{"type": "click", "name": "测试通知", "key": "GET_TEST_PUSH"},
 				},
 			},
 			{
 				"name": "控制",
 				"sub_button": []map[string]any{
-					{"type": "click", "name": "电源配置", "key": "GET_UGREEN_POWER"},
 					{"type": "click", "name": "性能设置", "key": "GET_UGREEN_PERF"},
-					{"type": "click", "name": "系统通知", "key": "GET_UGREEN_NOTIFY"},
 					{"type": "click", "name": "远程唤醒", "key": "GET_NAS_WOL"},
 				},
 			},

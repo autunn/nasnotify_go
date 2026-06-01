@@ -22,11 +22,33 @@ func TestNormalizeConfigLockedDefaults(t *testing.T) {
 	if Config.LocalNasPort != 9999 {
 		t.Fatalf("expected local nas port default 9999, got %d", Config.LocalNasPort)
 	}
+	if Config.LocalNasHost != DefaultLocalNasHost {
+		t.Fatalf("expected local nas host default %q, got %q", DefaultLocalNasHost, Config.LocalNasHost)
+	}
 	if Config.LocalNasName != "本机绿联 NAS" {
 		t.Fatalf("expected local nas name default, got %q", Config.LocalNasName)
 	}
 	if Config.WechatGatewayURL != DefaultWechatGatewayURL {
 		t.Fatalf("expected gateway url default %q, got %q", DefaultWechatGatewayURL, Config.WechatGatewayURL)
+	}
+}
+
+func TestNormalizeConfigLockedCleansLocalNasEndpoint(t *testing.T) {
+	previous := Config
+	defer func() { Config = previous }()
+
+	Config = AppConfig{
+		LocalNasHost: "http://192.168.1.9:10000/ugreen/",
+		LocalNasPort: 9999,
+	}
+
+	normalizeConfigLocked()
+
+	if Config.LocalNasHost != "192.168.1.9" {
+		t.Fatalf("expected host to be cleaned, got %q", Config.LocalNasHost)
+	}
+	if Config.LocalNasPort != 10000 {
+		t.Fatalf("expected port parsed from host, got %d", Config.LocalNasPort)
 	}
 }
 

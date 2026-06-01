@@ -61,6 +61,7 @@ function previewConfig() {
     interval_minutes: 5,
     system_status_interval_minutes: 60,
     local_nas_name: "书房绿联 NAS",
+    local_nas_host: "192.168.1.9",
     local_nas_port: 9999,
     local_nas_username: "admin",
     local_nas_password: "",
@@ -651,7 +652,7 @@ function dashboardOverviewMarkup(config) {
     {
       label: "本机 NAS",
       value: config.local_nas_name || "本机绿联 NAS",
-      meta: `${config.local_nas_username ? "账号已配置" : "待配置账号"} · 端口 ${config.local_nas_port || 9999}`
+      meta: `${config.local_nas_username ? "账号已配置" : "待配置账号"} · ${config.local_nas_host || "127.0.0.1"}:${config.local_nas_port || 9999}`
     }
   ];
 
@@ -761,6 +762,10 @@ function baseConfigForm(config, includeAdminPassword, layoutClass = "single-desk
         <label class="field">
           <span>本机 NAS 显示名称</span>
           <input type="text" id="local_nas_name" value="${escapeHtml(config.local_nas_name || "本机绿联 NAS")}" placeholder="例如：客厅 NAS">
+        </label>
+        <label class="field">
+          <span>NAS 地址 / IP</span>
+          <input type="text" id="local_nas_host" value="${escapeHtml(config.local_nas_host || "127.0.0.1")}" placeholder="例如：192.168.1.9 或 nas.local">
         </label>
         <label class="field">
           <span>本机 NAS 端口</span>
@@ -1027,7 +1032,11 @@ function dashboardBody(config) {
             <strong>${escapeHtml(config.system_status_interval_minutes || 60)} 分钟</strong>
           </div>
           <div class="summary-line">
-            <span>本机端口</span>
+            <span>NAS 地址</span>
+            <strong>${escapeHtml(config.local_nas_host || "127.0.0.1")}</strong>
+          </div>
+          <div class="summary-line">
+            <span>NAS 端口</span>
             <strong>${escapeHtml(config.local_nas_port || 9999)}</strong>
           </div>
         </div>
@@ -1234,6 +1243,7 @@ function collectConfig() {
     interval_minutes: numberValue("interval_minutes", 5),
     system_status_interval_minutes: numberValue("system_status_interval_minutes", 60),
     local_nas_name: inputValue("local_nas_name").trim(),
+    local_nas_host: inputValue("local_nas_host").trim(),
     local_nas_port: numberValue("local_nas_port", 9999),
     local_nas_username: inputValue("local_nas_username").trim(),
     local_nas_password: inputValue("local_nas_password"),
