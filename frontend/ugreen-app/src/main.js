@@ -62,6 +62,7 @@ function previewConfig() {
     system_status_interval_minutes: 60,
     local_nas_name: "书房绿联 NAS",
     local_nas_host: "192.168.1.9",
+    local_nas_mac: "AA:BB:CC:DD:EE:FF",
     local_nas_port: 9999,
     local_nas_username: "admin",
     local_nas_password: "",
@@ -652,7 +653,7 @@ function dashboardOverviewMarkup(config) {
     {
       label: "本机 NAS",
       value: config.local_nas_name || "本机绿联 NAS",
-      meta: `${config.local_nas_username ? "账号已配置" : "待配置账号"} · ${config.local_nas_host || "127.0.0.1"}:${config.local_nas_port || 9999}`
+      meta: `${config.local_nas_username ? "账号已配置" : "待配置账号"} · ${config.local_nas_host || "127.0.0.1"}:${config.local_nas_port || 9999} · ${config.local_nas_mac ? "可唤醒" : "未配置 MAC"}`
     }
   ];
 
@@ -701,7 +702,7 @@ function commandReferenceMarkup() {
         <div class="command-group">
           <div class="command-group-title">查询类</div>
           <div class="command-strip">
-            <span>菜单</span><span>状态</span><span>通知</span><span>存储</span><span>Docker</span><span>进程</span>
+            <span>菜单</span><span>巡检</span><span>状态</span><span>通知</span><span>存储</span><span>Docker</span><span>进程</span>
           </div>
         </div>
         <div class="command-group">
@@ -713,7 +714,7 @@ function commandReferenceMarkup() {
         <div class="command-group">
           <div class="command-group-title">控制类</div>
           <div class="command-strip">
-            <span>风扇1</span><span>风扇2</span><span>风扇3</span><span>CPU0</span><span>CPU1</span><span>CPU2</span>
+            <span>唤醒</span><span>风扇1</span><span>风扇2</span><span>风扇3</span><span>CPU0</span><span>CPU1</span><span>CPU2</span>
           </div>
         </div>
       </div>
@@ -730,7 +731,7 @@ function setupGuideMarkup() {
       </div>
       <div class="helper-list">
         <div class="helper-item"><strong>1.</strong><span>设置管理员密码，完成控制台初始化。</span></div>
-        <div class="helper-item"><strong>2.</strong><span>填入本机 NAS 管理账号，用于读取状态与执行固定控制命令。</span></div>
+        <div class="helper-item"><strong>2.</strong><span>填入本机 NAS 管理账号；如需远程唤醒，同时填写 MAC 地址。</span></div>
         <div class="helper-item"><strong>3.</strong><span>企业微信和 ClawBot 可同时保留，图片卡片会优先发送到可用通道。</span></div>
       </div>
     </section>
@@ -753,11 +754,11 @@ function baseConfigForm(config, includeAdminPassword, layoutClass = "single-desk
         ` : ""}
         <label class="field">
           <span>通知轮询间隔（分钟）</span>
-          <input type="number" id="interval_minutes" min="0.1" step="0.1" value="${escapeHtml(config.interval_minutes || 5)}">
+          <input type="number" id="interval_minutes" min="0.1" max="1440" step="0.1" value="${escapeHtml(config.interval_minutes || 5)}">
         </label>
         <label class="field">
           <span>系统状态推送间隔（分钟）</span>
-          <input type="number" id="system_status_interval_minutes" min="1" step="1" value="${escapeHtml(config.system_status_interval_minutes || 60)}">
+          <input type="number" id="system_status_interval_minutes" min="1" max="10080" step="1" value="${escapeHtml(config.system_status_interval_minutes || 60)}">
         </label>
         <label class="field">
           <span>本机 NAS 显示名称</span>
@@ -768,8 +769,12 @@ function baseConfigForm(config, includeAdminPassword, layoutClass = "single-desk
           <input type="text" id="local_nas_host" value="${escapeHtml(config.local_nas_host || "127.0.0.1")}" placeholder="例如：192.168.1.9 或 nas.local">
         </label>
         <label class="field">
+          <span>NAS MAC 地址</span>
+          <input type="text" id="local_nas_mac" value="${escapeHtml(config.local_nas_mac || "")}" placeholder="例如：AA:BB:CC:DD:EE:FF">
+        </label>
+        <label class="field">
           <span>本机 NAS 端口</span>
-          <input type="number" id="local_nas_port" min="1" step="1" value="${escapeHtml(config.local_nas_port || 9999)}" placeholder="默认 9999">
+          <input type="number" id="local_nas_port" min="1" max="65535" step="1" value="${escapeHtml(config.local_nas_port || 9999)}" placeholder="默认 9999">
         </label>
         <label class="field">
           <span>本机 NAS 管理账号</span>
@@ -1039,6 +1044,10 @@ function dashboardBody(config) {
             <span>NAS 端口</span>
             <strong>${escapeHtml(config.local_nas_port || 9999)}</strong>
           </div>
+          <div class="summary-line">
+            <span>远程唤醒</span>
+            <strong>${escapeHtml(config.local_nas_mac ? "已配置" : "未配置")}</strong>
+          </div>
         </div>
         <div class="settings-action-copy">修改后点击保存，后端会立即使用新的轮询、账号和网关参数。</div>
         <button type="submit" class="primary-btn save-config-btn">保存并应用</button>
@@ -1103,6 +1112,7 @@ function dashboardBody(config) {
           <span>验证链路</span>
         </div>
         <div class="action-stack">
+          <button type="button" class="ghost-btn health-check-btn">发送巡检报告</button>
           <button type="button" class="ghost-btn test-push-btn">发送测试通知</button>
           <button type="submit" class="primary-btn">保存当前配置</button>
         </div>
@@ -1118,6 +1128,7 @@ function dashboardBody(config) {
           <span>快速执行</span>
         </div>
         <div class="action-stack">
+          <button type="button" class="ghost-btn health-check-btn">发送巡检报告</button>
           <button type="button" class="ghost-btn test-push-btn">发送测试通知</button>
           <div class="action-hint">配置保存已集中在基础设置页，这里只保留指令参考和通知测试。</div>
         </div>
@@ -1235,7 +1246,12 @@ function inputValue(id) {
 }
 
 function numberValue(id, fallback) {
-  return Number(inputValue(id)) || fallback;
+  const raw = inputValue(id).trim();
+  if (!raw) {
+    return fallback;
+  }
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : fallback;
 }
 
 function collectConfig() {
@@ -1244,6 +1260,7 @@ function collectConfig() {
     system_status_interval_minutes: numberValue("system_status_interval_minutes", 60),
     local_nas_name: inputValue("local_nas_name").trim(),
     local_nas_host: inputValue("local_nas_host").trim(),
+    local_nas_mac: inputValue("local_nas_mac").trim(),
     local_nas_port: numberValue("local_nas_port", 9999),
     local_nas_username: inputValue("local_nas_username").trim(),
     local_nas_password: inputValue("local_nas_password"),
@@ -1258,6 +1275,36 @@ function collectConfig() {
     wechat_gateway_url: inputValue("wechat_gateway_url").trim(),
     wechat_gateway_secret: inputValue("wechat_gateway_secret").trim()
   };
+}
+
+function isMacAddress(value) {
+  const compact = String(value || "").trim().replace(/[:.\-]/g, "");
+  return compact === "" || /^[0-9a-fA-F]{12}$/.test(compact);
+}
+
+function validateConfigForm(config, { requireLocalNasPassword = false } = {}) {
+  if (config.interval_minutes <= 0 || config.interval_minutes > 1440) {
+    return "通知轮询间隔需在 0.1 到 1440 分钟之间。";
+  }
+  if (config.system_status_interval_minutes <= 0 || config.system_status_interval_minutes > 10080) {
+    return "系统状态推送间隔需在 1 到 10080 分钟之间。";
+  }
+  if (config.local_nas_port <= 0 || config.local_nas_port > 65535) {
+    return "本机 NAS 端口需在 1 到 65535 之间。";
+  }
+  if (!isMacAddress(config.local_nas_mac)) {
+    return "NAS MAC 地址格式不正确，例如 AA:BB:CC:DD:EE:FF。";
+  }
+  if (!config.local_nas_username) {
+    return "请填写本机 NAS 管理账号。";
+  }
+  if (requireLocalNasPassword && !config.local_nas_password) {
+    return "首次初始化请填写本机 NAS 管理密码。";
+  }
+  if (!config.wechat_gateway_url) {
+    return "请填写本地微信网关地址。";
+  }
+  return "";
 }
 
 async function copyText(text) {
@@ -1381,16 +1428,9 @@ function bindSetup() {
       showFormError("setupError", "两次输入的管理员密码不一致。");
       return;
     }
-    if (!config.local_nas_username) {
-      showFormError("setupError", "请填写本机 NAS 管理账号。");
-      return;
-    }
-    if (!config.local_nas_password) {
-      showFormError("setupError", "首次初始化请填写本机 NAS 管理密码。");
-      return;
-    }
-    if (!config.wechat_gateway_url) {
-      showFormError("setupError", "请填写本地微信网关地址。");
+    const configError = validateConfigForm(config, { requireLocalNasPassword: true });
+    if (configError) {
+      showFormError("setupError", configError);
       return;
     }
 
@@ -1467,12 +1507,9 @@ function bindDashboard() {
       showFormError("dashboardError", "新管理员密码至少 8 位。");
       return;
     }
-    if (!config.local_nas_username) {
-      showFormError("dashboardError", "请填写本机 NAS 管理账号。");
-      return;
-    }
-    if (!config.wechat_gateway_url) {
-      showFormError("dashboardError", "请填写本地微信网关地址。");
+    const configError = validateConfigForm(config);
+    if (configError) {
+      showFormError("dashboardError", configError);
       return;
     }
 
@@ -1497,6 +1534,20 @@ function bindDashboard() {
       try {
         await api("/test-push", { method: "POST", body: "{}" });
         state.flash = "测试通知已发送，请检查微信入口。";
+        await loadGatewayStatus();
+        renderApp();
+      } catch (error) {
+        showFormError("dashboardError", error.message);
+      }
+    });
+  });
+
+  document.querySelectorAll(".health-check-btn").forEach((button) => {
+    button.addEventListener("click", async () => {
+      clearFormError("dashboardError");
+      try {
+        await api("/health-check", { method: "POST", body: "{}" });
+        state.flash = "巡检报告已发送，请检查微信入口。";
         await loadGatewayStatus();
         renderApp();
       } catch (error) {

@@ -81,6 +81,9 @@ func performInitialSetup(req setupRequest) (int, string) {
 	if len(password) < 8 {
 		return http.StatusBadRequest, "admin password must be at least 8 characters"
 	}
+	if status, message := validateAppConfig(req.Config, true); message != "" {
+		return status, message
+	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return http.StatusInternalServerError, "password hash failed"
@@ -109,6 +112,9 @@ func saveAppConfig(req saveRequest) (int, string) {
 	newConfig := config.MergeWithExistingSensitiveFields(oldConfig, req.Config)
 	newConfig.AdminPasswordHash = oldConfig.AdminPasswordHash
 	newConfig.AdminPassword = ""
+	if status, message := validateAppConfig(newConfig, false); message != "" {
+		return status, message
+	}
 
 	oldGatewayURL := strings.TrimSpace(oldConfig.WechatGatewayURL)
 	oldGatewaySecret := strings.TrimSpace(oldConfig.WechatGatewaySecret)
@@ -145,6 +151,31 @@ func saveAppConfig(req saveRequest) (int, string) {
 			log.Printf("sync enterprise wechat menu failed: %v", err)
 		}
 	}()
+	return http.StatusOK, ""
+}
+
+func validateAppConfig(cfg config.AppConfig, requireLocalNasPassword bool) (int, string) {
+	if cfg.IntervalMinutes <= 0 || cfg.IntervalMinutes > 1440 {
+		return http.StatusBadRequest, "notification interval must be between 0 and 1440 minutes"
+	}
+	if cfg.SystemStatusIntervalMinutes <= 0 || cfg.SystemStatusIntervalMinutes > 10080 {
+		return http.StatusBadRequest, "system status interval must be between 1 and 10080 minutes"
+	}
+	if cfg.LocalNasPort <= 0 || cfg.LocalNasPort > 65535 {
+		return http.StatusBadRequest, "local NAS port must be between 1 and 65535"
+	}
+	if strings.TrimSpace(cfg.LocalNasUsername) == "" {
+		return http.StatusBadRequest, "local NAS username is required"
+	}
+	if requireLocalNasPassword && strings.TrimSpace(cfg.LocalNasPassword) == "" {
+		return http.StatusBadRequest, "local NAS password is required"
+	}
+	if mac := strings.TrimSpace(cfg.LocalNasMac); mac != "" && !config.IsMACAddress(mac) {
+		return http.StatusBadRequest, "local NAS MAC address is invalid"
+	}
+	if strings.TrimSpace(cfg.WechatGatewayURL) == "" {
+		return http.StatusBadRequest, "wechat gateway url is required"
+	}
 	return http.StatusOK, ""
 }
 

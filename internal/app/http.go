@@ -13,6 +13,7 @@ import (
 
 	"nasnotify-go/internal/api"
 	"nasnotify-go/internal/config"
+	"nasnotify-go/internal/nas"
 	"nasnotify-go/internal/notify"
 )
 
@@ -132,6 +133,10 @@ func (h *HTTPGateway) registerAPIGroup(apiGroup *gin.RouterGroup) {
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"success": true, "msg": "test push sent"})
+		})
+		apiAuth.POST("/health-check", func(c *gin.Context) {
+			go nas.PushUGreenHealthCheck()
+			c.JSON(http.StatusOK, gin.H{"success": true, "msg": "health check queued"})
 		})
 		apiAuth.POST("/save", func(c *gin.Context) {
 			var req saveRequest

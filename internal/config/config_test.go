@@ -39,6 +39,7 @@ func TestNormalizeConfigLockedCleansLocalNasEndpoint(t *testing.T) {
 
 	Config = AppConfig{
 		LocalNasHost: "http://192.168.1.9:10000/ugreen/",
+		LocalNasMac:  "aa-bb-cc-dd-ee-ff",
 		LocalNasPort: 9999,
 	}
 
@@ -49,6 +50,31 @@ func TestNormalizeConfigLockedCleansLocalNasEndpoint(t *testing.T) {
 	}
 	if Config.LocalNasPort != 10000 {
 		t.Fatalf("expected port parsed from host, got %d", Config.LocalNasPort)
+	}
+	if Config.LocalNasMac != "AA:BB:CC:DD:EE:FF" {
+		t.Fatalf("expected normalized MAC, got %q", Config.LocalNasMac)
+	}
+}
+
+func TestNormalizeMACAddress(t *testing.T) {
+	tests := []struct {
+		value string
+		want  string
+		valid bool
+	}{
+		{value: "aa:bb:cc:dd:ee:ff", want: "AA:BB:CC:DD:EE:FF", valid: true},
+		{value: "AABBCCDDEEFF", want: "AA:BB:CC:DD:EE:FF", valid: true},
+		{value: "aabb.ccdd.eeff", want: "AA:BB:CC:DD:EE:FF", valid: true},
+		{value: "invalid", want: "invalid", valid: false},
+	}
+
+	for _, tt := range tests {
+		if got := NormalizeMACAddress(tt.value); got != tt.want {
+			t.Fatalf("NormalizeMACAddress(%q) = %q, want %q", tt.value, got, tt.want)
+		}
+		if got := IsMACAddress(tt.value); got != tt.valid {
+			t.Fatalf("IsMACAddress(%q) = %v, want %v", tt.value, got, tt.valid)
+		}
 	}
 }
 

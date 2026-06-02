@@ -17,17 +17,9 @@ import (
 	"nasnotify-go/internal/config"
 	"nasnotify-go/internal/nas"
 	"nasnotify-go/internal/notify"
-	"nasnotify-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )
-
-// wakeTarget 记录可远程唤醒的设备信息
-type wakeTarget struct {
-	Name string
-	Mac  string
-	Ip   string
-}
 
 // HandleVerify 处理企业微信的 URL 验证及普通 Webhook 的 GET 请求
 func HandleVerify(c *gin.Context) {
@@ -176,6 +168,9 @@ func processWechatEvent(c *gin.Context, encryptStr string) {
 		// ==================== 1. 拦截菜单点击事件 ====================
 		if plainMsg.MsgType == "event" && plainMsg.Event == "click" {
 			switch plainMsg.EventKey {
+			case "GET_UGREEN_HEALTH":
+				go nas.PushUGreenHealthCheck()
+
 			case "GET_UGREEN_INFO":
 				go nas.PushUGreenSystemStatus()
 
@@ -211,7 +206,7 @@ func processWechatEvent(c *gin.Context, encryptStr string) {
 				}()
 
 			case "GET_NAS_WOL":
-				go handleWakeMenuCommand()
+				go nas.HandleWakeMenuCommand()
 			}
 		}
 
@@ -224,7 +219,7 @@ func processWechatEvent(c *gin.Context, encryptStr string) {
 				go nas.HandleUGreenPerfCommand(content)
 			} else if strings.HasPrefix(content, "唤醒") {
 				targetName := strings.TrimSpace(strings.TrimPrefix(content, "唤醒"))
-				go handleWakeCommand(targetName)
+				go nas.HandleWakeCommand(targetName)
 			}
 		}
 	}
@@ -250,135 +245,4 @@ func verifyWeChatSignature(c *gin.Context, encrypt string) bool {
 	h := sha1.New()
 	h.Write([]byte(strings.Join(params, "")))
 	return fmt.Sprintf("%x", h.Sum(nil)) == msgSig
-}
-
-// handleWakeMenuCommand 处理企业微信菜单「远程唤醒」点击事件
-//
-// 逻辑：
-// 1. 如果后台只配置了 1 台带 MAC 地址的设备，直接唤醒。
-// 2. 如果后台配置了多台带 MAC 地址的设备，返回可选指令列表，避免误唤醒多台。
-// 3. 如果没有任何设备配置 MAC 地址，提示用户去后台配置。
-func handleWakeMenuCommand() {
-	targets := collectWakeTargets("")
-
-	if len(targets) == 0 {
-		notify.WechatPush("⚠️ 唤醒失败：后台没有找到已配置 MAC 地址的设备。\n\n请先在网页后台为 NAS 配置 MAC 地址。")
-		return
-	}
-
-	if len(targets) == 1 {
-		wakeTargetDevice(targets[0])
-		return
-	}
-
-	var msg strings.Builder
-	msg.WriteString("⚠️ 检测到多个可唤醒设备，为避免误操作，请发送以下指令之一：\n")
-
-	for _, t := range targets {
-		msg.WriteString(fmt.Sprintf("\n「唤醒 %s」", t.Name))
-	}
-
-	notify.WechatPush(msg.String())
-}
-
-// handleWakeCommand 模糊匹配配置中的设备并下发定向唤醒魔术包
-func handleWakeCommand(targetName string) {
-	targetName = strings.TrimSpace(targetName)
-
-	if targetName == "" {
-		notify.WechatPush("⚠️ 指令错误：请指定要唤醒的设备名称，例如「唤醒 绿联」")
-		return
-	}
-
-	targets := collectWakeTargets(targetName)
-
-	if len(targets) == 0 {
-		notify.WechatPush(fmt.Sprintf("⚠️ 唤醒失败：未找到包含「%s」的设备，或该设备在后台未配置 MAC 地址。", targetName))
-		return
-	}
-
-	for _, t := range targets {
-		wakeTargetDevice(t)
-	}
-}
-
-// collectWakeTargets 从后台配置中收集可远程唤醒的设备
-//
-// targetName 为空时：返回所有配置了 MAC 地址的设备。
-// targetName 非空时：按设备标识名称模糊匹配，忽略英文大小写。
-func collectWakeTargets(targetName string) []wakeTarget {
-	targetName = strings.TrimSpace(targetName)
-	targetNameLower := strings.ToLower(targetName)
-
-	config.CfgMu.RLock()
-	defer config.CfgMu.RUnlock()
-
-	targets := make([]wakeTarget, 0)
-
-	for _, cfg := range config.Config.UGreen {
-		name := strings.TrimSpace(cfg.NotifyTypeName)
-		mac := strings.TrimSpace(cfg.MacAddress)
-		ip := strings.TrimSpace(cfg.IpPort)
-
-		if name == "" || mac == "" {
-			continue
-		}
-
-		if targetName == "" || strings.Contains(strings.ToLower(name), targetNameLower) {
-			targets = append(targets, wakeTarget{
-				Name: name,
-				Mac:  mac,
-				Ip:   ip,
-			})
-		}
-	}
-
-	for _, cfg := range config.Config.ZSpace {
-		name := strings.TrimSpace(cfg.NotifyTypeName)
-		mac := strings.TrimSpace(cfg.MacAddress)
-		ip := strings.TrimSpace(cfg.IpPort)
-
-		if name == "" || mac == "" {
-			continue
-		}
-
-		if targetName == "" || strings.Contains(strings.ToLower(name), targetNameLower) {
-			targets = append(targets, wakeTarget{
-				Name: name,
-				Mac:  mac,
-				Ip:   ip,
-			})
-		}
-	}
-
-	for _, cfg := range config.Config.FnOs {
-		name := strings.TrimSpace(cfg.NotifyTypeName)
-		mac := strings.TrimSpace(cfg.MacAddress)
-		ip := strings.TrimSpace(cfg.Server)
-
-		if name == "" || mac == "" {
-			continue
-		}
-
-		if targetName == "" || strings.Contains(strings.ToLower(name), targetNameLower) {
-			targets = append(targets, wakeTarget{
-				Name: name,
-				Mac:  mac,
-				Ip:   ip,
-			})
-		}
-	}
-
-	return targets
-}
-
-// wakeTargetDevice 对单个设备发送 WOL 魔术包
-func wakeTargetDevice(t wakeTarget) {
-	err := utils.WakeOnLAN(t.Mac, t.Ip)
-	if err != nil {
-		notify.WechatPush(fmt.Sprintf("❌ 唤醒「%s」失败：%v\nMAC: %s", t.Name, err, t.Mac))
-		return
-	}
-
-	notify.WechatPush(fmt.Sprintf("✅ 唤醒指令已发出：%s\nMAC: %s", t.Name, t.Mac))
 }

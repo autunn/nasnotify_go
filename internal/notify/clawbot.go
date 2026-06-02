@@ -167,6 +167,7 @@ func ClawBotQueryDeckText() string {
 	var builder strings.Builder
 	builder.WriteString("查询菜单\n")
 	builder.WriteString("`查询菜单` / `查询` / `query` / `query deck`\n\n")
+	builder.WriteString("`巡检` / `诊断` / `health` 检查配置与连通性\n")
 	builder.WriteString("`状态` / `system`         CPU / 内存 / 网络概览\n")
 	builder.WriteString("`通知` / `notice` / `notify` 系统通知流\n")
 	builder.WriteString("`存储` / `storage`        存储卷容量与使用率\n")
@@ -188,6 +189,7 @@ func ClawBotControlDeckText() string {
 	builder.WriteString("英文别名：`fan1` / `fan2` / `fan3`\n")
 	builder.WriteString("CPU 模式：`CPU0` 高性能，`CPU1` 均衡，`CPU2` 节能\n")
 	builder.WriteString("英文别名：`cpu0` / `cpu1` / `cpu2`\n")
+	builder.WriteString("远程唤醒：`唤醒` / `wol` / `wake`\n")
 	builder.WriteString("\n直接发送上面的具体指令即可执行控制，回复 `菜单` 可返回总览。")
 	return builder.String()
 }
@@ -207,6 +209,7 @@ func buildClawBotMenuText() string {
 	builder.WriteString("                              返回控制指令表\n")
 
 	builder.WriteString("\n查询菜单\n")
+	builder.WriteString("`巡检` / `诊断` / `health` 检查配置与连通性\n")
 	builder.WriteString("`状态` / `system`           CPU / 内存 / 网络概览\n")
 	builder.WriteString("`通知` / `notice` / `notify` 系统通知流\n")
 	builder.WriteString("`存储` / `storage`          存储卷容量与使用率\n")
@@ -224,9 +227,11 @@ func buildClawBotMenuText() string {
 	builder.WriteString("`CPU0` / `cpu0`            高性能\n")
 	builder.WriteString("`CPU1` / `cpu1`            均衡\n")
 	builder.WriteString("`CPU2` / `cpu2`            节能\n")
+	builder.WriteString("`唤醒` / `wol`             远程唤醒\n")
 
 	builder.WriteString("\n指令示例\n")
 	builder.WriteString("查询状态  `状态`\n")
+	builder.WriteString("一键巡检  `巡检`\n")
 	builder.WriteString("风扇控制  `风扇2`\n")
 	builder.WriteString("性能模式  `CPU1`\n")
 	return strings.TrimSpace(builder.String())

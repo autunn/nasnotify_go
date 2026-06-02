@@ -20,8 +20,8 @@ func ClawBotPushControlDeckCard() error {
 
 func ClawBotMenuCard(note string) notifycard.Card {
 	entryCount := 3
-	queryCount := 9
-	controlCount := 6
+	queryCount := 10
+	controlCount := 7
 
 	card := notifycard.Card{
 		Title:   "命令总览",
@@ -43,13 +43,13 @@ func ClawBotMenuCard(note string) notifycard.Card {
 			{
 				Label: "查询覆盖",
 				Value: fmt.Sprintf("%d 项", queryCount),
-				Hint:  "状态、通知、存储、Docker、UPS 等",
+				Hint:  "巡检、状态、通知、存储、Docker、UPS 等",
 				Tone:  notifycard.ToneGood,
 			},
 			{
 				Label: "控制覆盖",
 				Value: fmt.Sprintf("%d 项", controlCount),
-				Hint:  "风扇与 CPU 全部档位",
+				Hint:  "远程唤醒、风扇与 CPU 档位",
 				Tone:  notifycard.ToneWarm,
 			},
 			{
@@ -71,6 +71,7 @@ func ClawBotMenuCard(note string) notifycard.Card {
 			{
 				Title: "查询命令",
 				Lines: []string{
+					"巡检 / 诊断 / health：检查接口连通、登录状态和 WOL 配置。",
 					"状态 / system：CPU、内存、风扇、网络与设备概览。",
 					"通知 / notice / notify：最近系统通知与异常关键词识别。",
 					"存储 / storage：卷容量、总使用率与卷详情。",
@@ -91,6 +92,7 @@ func ClawBotMenuCard(note string) notifycard.Card {
 					"CPU0 / cpu0：高性能模式。",
 					"CPU1 / cpu1：均衡模式。",
 					"CPU2 / cpu2：节能模式。",
+					"唤醒 / wol：向本机绿联 NAS 发送远程唤醒魔术包。",
 				},
 			},
 		},
@@ -110,7 +112,7 @@ func ClawBotQueryDeckCard() notifycard.Card {
 		Metrics: []notifycard.Metric{
 			{
 				Label: "常用巡检",
-				Value: "9 组",
+				Value: "10 组",
 				Hint:  "系统 / 服务 / 值守",
 				Tone:  notifycard.ToneGood,
 			},
@@ -137,6 +139,7 @@ func ClawBotQueryDeckCard() notifycard.Card {
 			{
 				Title: "基础查询",
 				Lines: []string{
+					"巡检 / 诊断 / health：检查 NAS 地址可达性、账号登录、资源概览和远程唤醒配置。",
 					"状态 / system：CPU、内存、风扇、网络速率、设备信息与存储概览。",
 					"通知 / notice / notify：最近系统通知流与异常关键词识别。",
 					"测试 / test：检查当前微信推送链路是否能直接回卡片。",
@@ -182,6 +185,12 @@ func ClawBotControlDeckCard() notifycard.Card {
 				Tone:  notifycard.ToneGood,
 			},
 			{
+				Label: "远程唤醒",
+				Value: "1 项",
+				Hint:  "唤醒 / wol",
+				Tone:  notifycard.ToneWarm,
+			},
+			{
 				Label: "英文简写",
 				Value: "fan / cpu",
 				Hint:  "fan1-3 / cpu0-2",
@@ -216,6 +225,7 @@ func ClawBotControlDeckCard() notifycard.Card {
 			{
 				Title: "发送示例",
 				Lines: []string{
+					"直接回复 唤醒：向后台配置的本机绿联 NAS 发送 WOL 魔术包。",
 					"直接回复 风扇2：切换到标准风扇模式。",
 					"直接回复 CPU1：切换到均衡性能模式。",
 					"直接回复 fan3 / cpu0：使用英文简写执行。",

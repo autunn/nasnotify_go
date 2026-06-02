@@ -141,38 +141,77 @@ func clawBotMessageKey(msg notify.ClawBotMessage) string {
 func handleClawBotCommand(text string) {
 	command := strings.TrimSpace(text)
 	normalized := normalizeClawBotCommand(command)
-	compact := strings.ReplaceAll(normalized, " ", "")
+	compact := removeCommandSpaces(normalized)
 	switch {
-	case normalized == "菜单" || normalized == "help" || normalized == "menu":
+	case commandMatches(normalized, compact, "菜单", "帮助", "help", "menu"):
 		notify.ClawBotPushCard(notify.ClawBotMenuCard(""), notify.ClawBotMenuText())
-	case normalized == "query deck" || compact == "querydeck" || normalized == "查询菜单" || normalized == "查询":
+	case commandMatches(normalized, compact, "query deck", "querydeck", "查询菜单", "查询"):
 		notify.ClawBotPushCard(notify.ClawBotQueryDeckCard(), notify.ClawBotQueryDeckText())
-	case normalized == "control deck" || compact == "controldeck" || normalized == "控制菜单" || normalized == "控制":
+	case commandMatches(normalized, compact, "control deck", "controldeck", "控制菜单", "控制"):
 		notify.ClawBotPushCard(notify.ClawBotControlDeckCard(), notify.ClawBotControlDeckText())
-	case normalized == "状态" || normalized == "system":
+	case commandMatches(normalized, compact, "巡检", "诊断", "health", "check"):
+		nas.PushUGreenHealthCheck()
+	case commandMatches(normalized, compact, "状态", "概览", "系统", "system", "info", "status"):
 		nas.PushUGreenSystemStatus()
-	case normalized == "通知" || normalized == "notice" || normalized == "notify":
+	case commandMatches(normalized, compact, "通知", "消息", "notice", "notify", "message"):
 		nas.PushUGreenNotifyStatus()
-	case normalized == "存储" || normalized == "storage":
+	case commandMatches(normalized, compact, "存储", "硬盘", "磁盘", "storage", "disk"):
 		nas.PushUGreenStorageStatus()
-	case normalized == "docker":
+	case commandMatches(normalized, compact, "docker", "容器", "container"):
 		nas.PushUGreenDockerStatus()
-	case normalized == "进程" || normalized == "ps":
+	case commandMatches(normalized, compact, "进程", "服务", "ps", "process"):
 		nas.PushUGreenPsStatus()
-	case normalized == "备份" || normalized == "backup":
+	case commandMatches(normalized, compact, "备份", "同步", "backup", "sync"):
 		nas.PushUGreenBackupStatus()
-	case normalized == "电源" || normalized == "power":
+	case commandMatches(normalized, compact, "电源", "休眠", "power", "sleep"):
 		nas.PushUGreenPowerStatus()
-	case normalized == "ups":
+	case commandMatches(normalized, compact, "ups"):
 		nas.PushUGreenUpsStatus()
-	case normalized == "测试" || normalized == "test":
+	case commandMatches(normalized, compact, "测试", "test"):
 		if err := triggerTestPush(); err != nil {
 			notify.WechatPush("测试通知发送失败: " + err.Error())
 		}
+	case isWakeCommand(normalized, compact):
+		targetName := wakeTargetFromCommand(command, normalized)
+		nas.HandleWakeCommand(targetName)
 	case nas.IsUGreenPerfCommand(command):
 		nas.HandleUGreenPerfCommand(command)
 	default:
 		notify.ClawBotPushCard(notify.ClawBotMenuCard("未识别命令，下面是当前可用菜单。"), "未识别命令。\n\n"+notify.ClawBotMenuText())
+	}
+}
+
+func removeCommandSpaces(text string) string {
+	return strings.ReplaceAll(text, " ", "")
+}
+
+func commandMatches(normalized, compact string, aliases ...string) bool {
+	for _, alias := range aliases {
+		aliasNormalized := normalizeClawBotCommand(alias)
+		if normalized == aliasNormalized || compact == removeCommandSpaces(aliasNormalized) {
+			return true
+		}
+	}
+	return false
+}
+
+func isWakeCommand(normalized, compact string) bool {
+	return commandMatches(normalized, compact, "唤醒", "wol", "wake") ||
+		strings.HasPrefix(normalized, "唤醒 ") ||
+		strings.HasPrefix(normalized, "wol ") ||
+		strings.HasPrefix(normalized, "wake ")
+}
+
+func wakeTargetFromCommand(command, normalized string) string {
+	switch {
+	case strings.HasPrefix(command, "唤醒"):
+		return strings.TrimSpace(strings.TrimPrefix(command, "唤醒"))
+	case strings.HasPrefix(normalized, "wol "):
+		return strings.TrimSpace(command[3:])
+	case strings.HasPrefix(normalized, "wake "):
+		return strings.TrimSpace(command[4:])
+	default:
+		return ""
 	}
 }
 

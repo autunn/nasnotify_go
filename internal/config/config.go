@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode"
 
 	"nasnotify-go/internal/appenv"
 )
@@ -53,15 +54,14 @@ type AppConfig struct {
 
 	LocalNasName     string `json:"local_nas_name"`
 	LocalNasHost     string `json:"local_nas_host"`
+	LocalNasMac      string `json:"local_nas_mac"`
 	LocalNasPort     int    `json:"local_nas_port"`
 	LocalNasUsername string `json:"local_nas_username"`
 	LocalNasPassword string `json:"local_nas_password"`
 
-	// Legacy multi-device fields are preserved so existing configs do not lose
-	// data when this repo is upgraded to the new single-local-NAS console.
-	ZSpace []ZSpaceConfig `json:"zspace,omitempty"`
+	// Legacy UGreen devices are kept only for compatibility with older config
+	// files. New UI flows use the single local NAS fields above.
 	UGreen []UGreenConfig `json:"ugreen,omitempty"`
-	FnOs   []FnOsConfig   `json:"fnos,omitempty"`
 }
 
 type UGreenConfig struct {
@@ -71,26 +71,6 @@ type UGreenConfig struct {
 	Password       string `json:"password"`
 	NotifyTypeName string `json:"notify_type_name"`
 	UseSSL         bool   `json:"use_ssl"`
-	MacAddress     string `json:"mac_address,omitempty"`
-}
-
-type ZSpaceConfig struct {
-	ID             string `json:"id,omitempty"`
-	IpPort         string `json:"ip_port"`
-	Cookie         string `json:"cookie"`
-	NotifyTypeName string `json:"notify_type_name"`
-	UseSSL         bool   `json:"use_ssl"`
-	MacAddress     string `json:"mac_address,omitempty"`
-}
-
-type FnOsConfig struct {
-	ID             string `json:"id,omitempty"`
-	Server         string `json:"server"`
-	Username       string `json:"username"`
-	Password       string `json:"password"`
-	NotifyTypeName string `json:"notify_type_name"`
-	UseSSL         bool   `json:"use_ssl"`
-	Cookie         string `json:"cookie,omitempty"`
 	MacAddress     string `json:"mac_address,omitempty"`
 }
 
@@ -170,9 +150,7 @@ func GetConfigSnapshot() AppConfig {
 	defer CfgMu.RUnlock()
 
 	snapshot := Config
-	snapshot.ZSpace = cloneZSpace(Config.ZSpace)
 	snapshot.UGreen = cloneUGreen(Config.UGreen)
-	snapshot.FnOs = cloneFnOs(Config.FnOs)
 	return snapshot
 }
 
@@ -185,15 +163,8 @@ func SanitizedConfigForWeb() AppConfig {
 	snapshot.EncodingAESKey = ""
 	snapshot.WechatGatewaySecret = ""
 	snapshot.LocalNasPassword = ""
-	for i := range snapshot.ZSpace {
-		snapshot.ZSpace[i].Cookie = ""
-	}
 	for i := range snapshot.UGreen {
 		snapshot.UGreen[i].Password = ""
-	}
-	for i := range snapshot.FnOs {
-		snapshot.FnOs[i].Password = ""
-		snapshot.FnOs[i].Cookie = ""
 	}
 	return snapshot
 }
@@ -227,20 +198,10 @@ func MergeWithExistingSensitiveFields(existing, incoming AppConfig) AppConfig {
 	if strings.TrimSpace(incoming.LocalNasHost) == "" {
 		incoming.LocalNasHost = existing.LocalNasHost
 	}
-	if incoming.ZSpace == nil {
-		incoming.ZSpace = cloneZSpace(existing.ZSpace)
-	} else {
-		incoming.ZSpace = mergeZSpaceSensitive(existing.ZSpace, incoming.ZSpace)
-	}
 	if incoming.UGreen == nil {
 		incoming.UGreen = cloneUGreen(existing.UGreen)
 	} else {
 		incoming.UGreen = mergeUGreenSensitive(existing.UGreen, incoming.UGreen)
-	}
-	if incoming.FnOs == nil {
-		incoming.FnOs = cloneFnOs(existing.FnOs)
-	} else {
-		incoming.FnOs = mergeFnOsSensitive(existing.FnOs, incoming.FnOs)
 	}
 	return incoming
 }
@@ -295,18 +256,60 @@ func normalizeConfigLocked() {
 	if strings.TrimSpace(Config.LocalNasName) == "" {
 		Config.LocalNasName = "本机绿联 NAS"
 	}
+	Config.LocalNasMac = NormalizeMACAddress(Config.LocalNasMac)
 	if strings.TrimSpace(Config.WechatGatewayURL) == "" {
 		Config.WechatGatewayURL = DefaultWechatGatewayURL
-	}
-	if Config.ZSpace == nil {
-		Config.ZSpace = []ZSpaceConfig{}
 	}
 	if Config.UGreen == nil {
 		Config.UGreen = []UGreenConfig{}
 	}
-	if Config.FnOs == nil {
-		Config.FnOs = []FnOsConfig{}
+}
+
+func NormalizeMACAddress(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
 	}
+
+	var hexDigits []rune
+	for _, ch := range value {
+		switch {
+		case ch == ':' || ch == '-' || ch == '.':
+			continue
+		case unicode.Is(unicode.ASCII_Hex_Digit, ch):
+			hexDigits = append(hexDigits, unicode.ToUpper(ch))
+		default:
+			return value
+		}
+	}
+	if len(hexDigits) != 12 {
+		return value
+	}
+
+	parts := make([]string, 0, 6)
+	for i := 0; i < len(hexDigits); i += 2 {
+		parts = append(parts, string(hexDigits[i:i+2]))
+	}
+	return strings.Join(parts, ":")
+}
+
+func IsMACAddress(value string) bool {
+	normalized := NormalizeMACAddress(value)
+	if len(normalized) != 17 {
+		return false
+	}
+	for i, ch := range normalized {
+		if i%3 == 2 {
+			if ch != ':' {
+				return false
+			}
+			continue
+		}
+		if !unicode.Is(unicode.ASCII_Hex_Digit, ch) {
+			return false
+		}
+	}
+	return true
 }
 
 func normalizeLocalNasEndpoint(host string, port int) (string, int) {
@@ -347,15 +350,6 @@ func normalizeLocalNasEndpoint(host string, port int) (string, int) {
 	return host, port
 }
 
-func cloneZSpace(in []ZSpaceConfig) []ZSpaceConfig {
-	if in == nil {
-		return nil
-	}
-	out := make([]ZSpaceConfig, len(in))
-	copy(out, in)
-	return out
-}
-
 func cloneUGreen(in []UGreenConfig) []UGreenConfig {
 	if in == nil {
 		return nil
@@ -363,37 +357,6 @@ func cloneUGreen(in []UGreenConfig) []UGreenConfig {
 	out := make([]UGreenConfig, len(in))
 	copy(out, in)
 	return out
-}
-
-func cloneFnOs(in []FnOsConfig) []FnOsConfig {
-	if in == nil {
-		return nil
-	}
-	out := make([]FnOsConfig, len(in))
-	copy(out, in)
-	return out
-}
-
-func mergeZSpaceSensitive(existing, incoming []ZSpaceConfig) []ZSpaceConfig {
-	if len(existing) == 0 || len(incoming) == 0 {
-		return incoming
-	}
-	existingByID := make(map[string]ZSpaceConfig, len(existing))
-	for _, item := range existing {
-		if id := strings.TrimSpace(item.ID); id != "" {
-			existingByID[id] = item
-		}
-	}
-	for i := range incoming {
-		id := strings.TrimSpace(incoming[i].ID)
-		if id == "" {
-			continue
-		}
-		if old, ok := existingByID[id]; ok && incoming[i].Cookie == "" {
-			incoming[i].Cookie = old.Cookie
-		}
-	}
-	return incoming
 }
 
 func mergeUGreenSensitive(existing, incoming []UGreenConfig) []UGreenConfig {
@@ -413,33 +376,6 @@ func mergeUGreenSensitive(existing, incoming []UGreenConfig) []UGreenConfig {
 		}
 		if old, ok := existingByID[id]; ok && incoming[i].Password == "" {
 			incoming[i].Password = old.Password
-		}
-	}
-	return incoming
-}
-
-func mergeFnOsSensitive(existing, incoming []FnOsConfig) []FnOsConfig {
-	if len(existing) == 0 || len(incoming) == 0 {
-		return incoming
-	}
-	existingByID := make(map[string]FnOsConfig, len(existing))
-	for _, item := range existing {
-		if id := strings.TrimSpace(item.ID); id != "" {
-			existingByID[id] = item
-		}
-	}
-	for i := range incoming {
-		id := strings.TrimSpace(incoming[i].ID)
-		if id == "" {
-			continue
-		}
-		if old, ok := existingByID[id]; ok {
-			if incoming[i].Password == "" {
-				incoming[i].Password = old.Password
-			}
-			if incoming[i].Cookie == "" {
-				incoming[i].Cookie = old.Cookie
-			}
 		}
 	}
 	return incoming

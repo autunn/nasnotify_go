@@ -58,6 +58,7 @@ func buildLocalUGreenConfig(cfg config.AppConfig) *config.UGreenConfig {
 		Password:       cfg.LocalNasPassword,
 		NotifyTypeName: name,
 		UseSSL:         false,
+		MacAddress:     strings.TrimSpace(cfg.LocalNasMac),
 	}
 }
 

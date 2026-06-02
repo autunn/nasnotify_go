@@ -2,9 +2,9 @@
     "id": "com.autunn.nasnotifyfresh",
     "name": "nasnotify-go-frontend",
     "author": "Autunn",
-    "version": 53,
-    "fullVersion": "v1.0.1.53",
-    "buildTime": "26/06/02 04:18",
+    "version": 54,
+    "fullVersion": "v1.0.1.54",
+    "buildTime": "26/06/02 04:58",
     "description": "NasNotify Go desktop frontend.",
     "supportLanguages": [],
     "windowConfig": {
