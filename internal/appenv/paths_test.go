@@ -18,3 +18,12 @@ func TestLogDirDoesNotCreateConfigDirectory(t *testing.T) {
 		t.Fatalf("LogDir() should not create config directory in log dir, stat err = %v", err)
 	}
 }
+
+func TestDataDirUsesExplicitEnvFirst(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "macos-data")
+	t.Setenv("UGAPP_DATA_DIR", dataDir)
+
+	if got := DataDir(); got != dataDir {
+		t.Fatalf("DataDir() = %q; want %q", got, dataDir)
+	}
+}

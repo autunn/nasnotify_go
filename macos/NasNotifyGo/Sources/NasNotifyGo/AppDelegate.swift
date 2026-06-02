@@ -6,6 +6,14 @@ extension String {
     var shellQuoted: String {
         "'" + replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
+
+    var xmlEscaped: String {
+        replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "'", with: "&apos;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+    }
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -101,6 +109,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var serviceBuildMarkerURL: URL {
         appSupportURL.appendingPathComponent(".service_build_marker")
+    }
+
+    private var backendEnvironmentShellPrefix: String {
+        [
+            "UGAPP_DATA_DIR=\(dataURL.path.shellQuoted)",
+            "UGAPP_WEB_DIR=\(bundledWWWURL.path.shellQuoted)"
+        ].joined(separator: " ")
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -371,12 +386,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         if FileManager.default.fileExists(atPath: servicePlistURL.path) {
+            writeServiceLaunchAgent()
+            if FileManager.default.fileExists(atPath: appPlistURL.path) {
+                writeAppLaunchAgent()
+            }
+
+            _ = run("/bin/launchctl bootout gui/$(id -u)/\(serviceLabel) >/dev/null 2>&1 || true")
+            _ = run("/bin/launchctl bootout gui/$(id -u) \(servicePlistURL.path.shellQuoted) >/dev/null 2>&1 || true")
             _ = run("/bin/launchctl bootstrap gui/$(id -u) \(servicePlistURL.path.shellQuoted) >/dev/null 2>&1 || true")
             _ = run("/bin/launchctl kickstart -k gui/$(id -u)/\(serviceLabel) >/dev/null 2>&1 || true")
         } else {
             let command = """
-            cd \(appSupportURL.path.shellQuoted) && \
-            nohup \(backendURL.path.shellQuoted) >> \(logFileURL.path.shellQuoted) 2>&1 & \
+            cd \(appSupportURL.path.shellQuoted) || exit 1
+            \(backendEnvironmentShellPrefix) nohup \(backendURL.path.shellQuoted) >> \(logFileURL.path.shellQuoted) 2>&1 &
             echo $! > \(pidFileURL.path.shellQuoted)
             """
 
@@ -590,18 +612,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
           <string>\(serviceLabel)</string>
           <key>ProgramArguments</key>
           <array>
-            <string>\(backendURL.path)</string>
+            <string>\(backendURL.path.xmlEscaped)</string>
           </array>
+          <key>EnvironmentVariables</key>
+          <dict>
+            <key>UGAPP_DATA_DIR</key>
+            <string>\(dataURL.path.xmlEscaped)</string>
+            <key>UGAPP_WEB_DIR</key>
+            <string>\(bundledWWWURL.path.xmlEscaped)</string>
+          </dict>
           <key>WorkingDirectory</key>
-          <string>\(appSupportURL.path)</string>
+          <string>\(appSupportURL.path.xmlEscaped)</string>
           <key>RunAtLoad</key>
           <true/>
           <key>KeepAlive</key>
           <true/>
           <key>StandardOutPath</key>
-          <string>\(logDirURL.appendingPathComponent("NasNotify-Go.launchd.out.log").path)</string>
+          <string>\(logDirURL.appendingPathComponent("NasNotify-Go.launchd.out.log").path.xmlEscaped)</string>
           <key>StandardErrorPath</key>
-          <string>\(logDirURL.appendingPathComponent("NasNotify-Go.launchd.err.log").path)</string>
+          <string>\(logDirURL.appendingPathComponent("NasNotify-Go.launchd.err.log").path.xmlEscaped)</string>
           <key>ProcessType</key>
           <string>Background</string>
         </dict>
@@ -627,7 +656,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
           <string>\(appLabel)</string>
           <key>ProgramArguments</key>
           <array>
-            <string>\(appExecutableURL.path)</string>
+            <string>\(appExecutableURL.path.xmlEscaped)</string>
             <string>--login-item</string>
           </array>
           <key>RunAtLoad</key>
