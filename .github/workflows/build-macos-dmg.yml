@@ -1,4 +1,4 @@
-name: Build macOS DMG
+name: Build signed macOS DMG
 
 on:
   workflow_dispatch:
@@ -35,135 +35,100 @@ jobs:
             echo "APP_VERSION=v$(date +'%Y.%m.%d')-${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
           fi
 
-      - name: Build Go backend
+      - name: Import Developer ID certificate
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_CODESIGN_IDENTITY_OVERRIDE: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
         run: |
-          set -e
-          rm -rf dist
-          mkdir -p dist/backend
-          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build \
-            -ldflags "-s -w -X main.Version=${APP_VERSION}" \
-            -o dist/backend/nasnotify-go-app ./cmd/nasnotify
+          set -euo pipefail
+          : "${MACOS_CERTIFICATE_P12_BASE64:?Missing secret MACOS_CERTIFICATE_P12_BASE64}"
+          : "${MACOS_CERTIFICATE_PASSWORD:?Missing secret MACOS_CERTIFICATE_PASSWORD}"
 
-      - name: Build Vite frontend
+          CERTIFICATE_PATH="$RUNNER_TEMP/developer-id-application.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/nasnotify-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+
+          printf '%s' "$MACOS_CERTIFICATE_P12_BASE64" | base64 -D > "$CERTIFICATE_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+
+          if [[ -n "$MACOS_CODESIGN_IDENTITY_OVERRIDE" ]]; then
+            IDENTITY="$MACOS_CODESIGN_IDENTITY_OVERRIDE"
+          else
+            IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
+              | sed -n 's/.*"\(Developer ID Application:.*\)".*/\1/p' \
+              | head -n 1)"
+          fi
+
+          if [[ -z "$IDENTITY" ]]; then
+            echo "Developer ID Application identity was not found in the imported certificate." >&2
+            security find-identity -v -p codesigning "$KEYCHAIN_PATH" || true
+            exit 1
+          fi
+
+          echo "MACOS_CODESIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+          echo "MACOS_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          echo "Using codesign identity: $IDENTITY"
+
+      - name: Prepare App Store Connect API key
+        env:
+          APP_STORE_CONNECT_API_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8_BASE64 }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
         run: |
-          set -e
-          cd frontend/ugreen-app
-          npm ci
-          npm run build
+          set -euo pipefail
 
-      - name: Build Swift desktop app
+          if [[ -z "$APP_STORE_CONNECT_API_KEY_P8_BASE64" ]]; then
+            echo "No App Store Connect API key secret provided; Apple ID notarization secrets may be used instead."
+            exit 0
+          fi
+
+          : "${APP_STORE_CONNECT_KEY_ID:?Missing secret APP_STORE_CONNECT_KEY_ID}"
+
+          API_KEY_PATH="$RUNNER_TEMP/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
+          printf '%s' "$APP_STORE_CONNECT_API_KEY_P8_BASE64" | base64 -D > "$API_KEY_PATH"
+          chmod 600 "$API_KEY_PATH"
+          echo "APP_STORE_CONNECT_API_KEY_PATH=$API_KEY_PATH" >> "$GITHUB_ENV"
+
+      - name: Build, sign, notarize and staple DMG
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
         run: |
-          set -e
-          cd macos/NasNotifyGo
-          swift build -c release
-
-      - name: Assemble app bundle
-        run: |
-          set -e
-
-          APP_NAME="NasNotify-Go"
-          APP_BUNDLE="dist/${APP_NAME}.app"
-          CONTENTS="${APP_BUNDLE}/Contents"
-          MACOS="${CONTENTS}/MacOS"
-          RESOURCES="${CONTENTS}/Resources"
-          ICON_ICNS="macos/NasNotifyGo/Sources/NasNotifyGo/Resources/AppIcon.icns"
-          ICON_PNG="macos/NasNotifyGo/Sources/NasNotifyGo/Resources/AppIcon.png"
-
-          mkdir -p "${MACOS}" "${RESOURCES}"
-
-          cp "macos/NasNotifyGo/.build/release/NasNotifyGo" "${MACOS}/NasNotify-Go"
-          cp "dist/backend/nasnotify-go-app" "${RESOURCES}/nasnotify-go-app"
-          cp -R "frontend/ugreen-app/dist" "${RESOURCES}/www"
-          cp "${ICON_ICNS}" "${RESOURCES}/AppIcon.icns"
-          cp "${ICON_PNG}" "${RESOURCES}/AppIcon.png"
-
-          cat > "${RESOURCES}/service-runner.sh" <<'RUNNER'
-          #!/bin/bash
-          set -e
-
-          APP_CONTENTS="$(cd "$(dirname "$0")/.." && pwd)"
-          APP_RESOURCES="$APP_CONTENTS/Resources"
-          APP_SUPPORT="$HOME/Library/Application Support/NasNotify-Go"
-          CONFIG_DIR="$APP_SUPPORT/config"
-          DATA_DIR="$APP_SUPPORT/data"
-          LOG_DIR="$HOME/Library/Logs"
-          LOG_FILE="$LOG_DIR/NasNotify-Go.log"
-
-          mkdir -p "$CONFIG_DIR" "$DATA_DIR" "$LOG_DIR"
-
-          cd "$APP_SUPPORT"
-          exec "$APP_RESOURCES/nasnotify-go-app" >> "$LOG_FILE" 2>&1
-          RUNNER
-
-          chmod +x "${MACOS}/NasNotify-Go"
-          chmod +x "${RESOURCES}/nasnotify-go-app"
-          chmod +x "${RESOURCES}/service-runner.sh"
-
-          cat > "${CONTENTS}/Info.plist" <<PLIST
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>CFBundleName</key>
-            <string>NasNotify-Go</string>
-
-            <key>CFBundleDisplayName</key>
-            <string>NasNotify-Go</string>
-
-            <key>CFBundleIdentifier</key>
-            <string>com.autunn.nasnotify-go</string>
-
-            <key>CFBundleVersion</key>
-            <string>${GITHUB_RUN_NUMBER}</string>
-
-            <key>CFBundleShortVersionString</key>
-            <string>${APP_VERSION#v}</string>
-
-            <key>CFBundleExecutable</key>
-            <string>NasNotify-Go</string>
-
-            <key>CFBundleIconFile</key>
-            <string>AppIcon</string>
-
-            <key>CFBundlePackageType</key>
-            <string>APPL</string>
-
-            <key>LSMinimumSystemVersion</key>
-            <string>11.0</string>
-
-            <key>NSAppTransportSecurity</key>
-            <dict>
-              <key>NSAllowsLocalNetworking</key>
-              <true/>
-            </dict>
-
-            <key>NSHighResolutionCapable</key>
-            <true/>
-          </dict>
-          </plist>
-          PLIST
-
-          /usr/libexec/PlistBuddy -c "Print :CFBundleIconFile" "${CONTENTS}/Info.plist"
-          test -f "${RESOURCES}/AppIcon.icns"
-
-          codesign --force --deep --sign - "${APP_BUNDLE}"
-
-      - name: Build DMG
-        run: |
-          set -e
-          rm -rf dmgroot
-          mkdir -p dmgroot
-          cp -R "dist/NasNotify-Go.app" dmgroot/
-          ln -s /Applications dmgroot/Applications
-          hdiutil create \
-            -volname "NasNotify-Go" \
-            -srcfolder dmgroot \
-            -ov \
-            -format UDZO \
-            "NasNotify-Go-macOS-arm64.dmg"
+          set -euo pipefail
+          VERSION="$APP_VERSION" \
+            BUILD_VERSION="$GITHUB_RUN_NUMBER" \
+            SIGN_AND_NOTARIZE=1 \
+            CREATE_DMG=1 \
+            NOTARIZE_DMG=1 \
+            ./scripts/build-macos-app.sh
 
       - name: Upload DMG
         uses: actions/upload-artifact@v4
         with:
-          name: NasNotify-Go-macOS-arm64-dmg
-          path: NasNotify-Go-macOS-arm64.dmg
+          name: NasNotify-Go-macOS-dmg
+          path: dist/NasNotify-Go-macOS-*.dmg
+
+      - name: Cleanup signing keychain
+        if: always()
+        run: |
+          if [[ -n "${MACOS_KEYCHAIN_PATH:-}" ]]; then
+            security delete-keychain "$MACOS_KEYCHAIN_PATH" || true
+          fi

@@ -128,23 +128,73 @@ CPU1
 
 查询类命令会优先返回黑金图片卡片；`唤醒` / `wol` 会向后台配置的本机绿联 NAS 发送 WOL 魔术包。
 
-## macOS 构建
+## macOS 构建、签名与公证
 
-本仓库用于上传 GitHub 后构建 macOS 程序。GitHub Actions 会自动执行：
+macOS 产物使用 `scripts/build-macos-app.sh` 统一构建。脚本会构建 Go 后端、Vite 前端、Swift 桌面窗口壳应用，并生成 DMG。正式发布时会按 Apple Developer ID 流程执行：
 
-1. 构建 Go 后端。
-2. 执行 `frontend/ugreen-app` 的 Vite 构建。
-3. 构建 Swift 桌面窗口壳应用。
-4. 将后端和前端 `dist` 放入 app bundle 的 `Resources`。
-5. 生成 DMG。
+1. 使用 `Developer ID Application` 证书签名后端二进制、Swift 主程序和 `.app`。
+2. 启用 hardened runtime 并带时间戳签名。
+3. 提交 Apple notarization 公证。
+4. 将公证票据 staple 到 `.app` 和 DMG。
+5. 上传已签名、公证的 DMG artifact。
 
-本地 macOS 构建：
+本地普通构建：
 
 ```bash
 ./scripts/build-macos-app.sh
 ```
 
-Windows 环境不能完整验证 Swift/macOS app 打包，但可以验证 Go 测试和 Vite 构建。
+本地正式签名公证构建：
+
+```bash
+export MACOS_CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)"
+export APPLE_NOTARY_KEYCHAIN_PROFILE="nasnotify-notary"
+SIGN_AND_NOTARIZE=1 ./scripts/build-macos-app.sh
+```
+
+也可以不用 keychain profile，改用：
+
+```bash
+export APPLE_ID="apple@example.com"
+export APPLE_TEAM_ID="TEAMID"
+export APPLE_APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"
+```
+
+GitHub Actions 的 `Build signed macOS DMG` 需要手动触发，并需要配置以下 secrets：
+
+```text
+MACOS_CERTIFICATE_P12_BASE64       # Developer ID Application 证书和私钥导出的 p12，再 base64
+MACOS_CERTIFICATE_PASSWORD         # p12 导出密码
+MACOS_CODESIGN_IDENTITY            # 可选，例：Developer ID Application: Your Name (TEAMID)
+APPLE_ID                           # 使用 Apple ID 公证时需要
+APPLE_TEAM_ID                      # 使用 Apple ID 公证时需要
+APPLE_APP_SPECIFIC_PASSWORD        # 使用 Apple ID 公证时需要
+```
+
+如果使用 App Store Connect API Key 公证，则改为配置：
+
+```text
+APP_STORE_CONNECT_API_KEY_P8_BASE64
+APP_STORE_CONNECT_KEY_ID
+APP_STORE_CONNECT_ISSUER_ID
+```
+
+导出 GitHub 所需的 p12 base64：
+
+```bash
+base64 -i DeveloperIDApplication.p12 | pbcopy
+```
+
+创建本地 notarytool profile：
+
+```bash
+xcrun notarytool store-credentials "nasnotify-notary" \
+  --apple-id "apple@example.com" \
+  --team-id "TEAMID" \
+  --password "xxxx-xxxx-xxxx-xxxx"
+```
+
+Windows 环境不能完整验证 Swift/macOS app 打包、Developer ID 签名和 Apple 公证，但可以验证 Go 测试和 Vite 构建。
 
 ## Docker
 

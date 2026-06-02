@@ -7,3 +7,6 @@
 /frontend/ugreen-app/dist/
 /frontend/ugreen-app/builder/*.tar
 /tools/ugcli/*.exe
+*.p12
+*.p8
+AuthKey_*.p8
