@@ -321,8 +321,8 @@ func MatchClawBotBindingMessage(text string) bool {
 	}
 
 	ClawBotPushCard(
-		ClawBotMenuCard("微信入口绑定成功，现在可以直接在聊天里查看黑金菜单并发送命令。"),
-		"微信入口绑定成功。\n\n现在可以发送“菜单”查看可用命令。",
+		ClawBotMenuCard("微信 ClawBot 绑定成功，现在可以直接在聊天里查看黑金菜单并发送命令。"),
+		"微信 ClawBot 绑定成功。\n\n现在可以发送“菜单”查看可用命令。",
 	)
 	return true
 }
@@ -334,8 +334,8 @@ func GetClawBotStatus() ClawBotStatus {
 		Bound:      snapshot.WechatBound,
 		BindTime:   strings.TrimSpace(snapshot.WechatBoundAt),
 		Tips: []string{
-			"默认使用内置微信网关，不需要单独部署第二个服务。",
-			"先扫码登录微信入口，再向该入口发送当前绑定码，NasNotify 才会认定为已绑定。",
+			"默认使用内置 ClawBot 网关，不需要单独部署第二个服务。",
+			"先扫码登录微信 ClawBot，再向 ClawBot 会话发送当前绑定码，NasNotify 才会认定为已绑定。",
 			"绑定完成后，可发送 菜单、状态、通知、存储、Docker、进程、备份、电源、UPS、测试、风扇2、CPU1 等命令。",
 		},
 	}
@@ -353,7 +353,7 @@ func GetClawBotStatus() ClawBotStatus {
 
 	if strings.TrimSpace(snapshot.WechatGatewayURL) == "" {
 		if status.LastError == "" {
-			status.LastError = "请先填写微信网关地址，或使用默认内置网关。"
+			status.LastError = "请先填写 ClawBot 网关地址，或使用默认内置网关。"
 		}
 		status.Configured = false
 		return status
@@ -585,13 +585,13 @@ func gatewayJSONRequest(method, route string, query url.Values, body any, dst an
 	client := &http.Client{Timeout: 12 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("连接外置微信网关失败: %w", err)
+		return fmt.Errorf("连接外置 ClawBot 网关失败: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		raw, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("外置微信网关返回错误: HTTP %d %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+		return fmt.Errorf("外置 ClawBot 网关返回错误: HTTP %d %s", resp.StatusCode, strings.TrimSpace(string(raw)))
 	}
 
 	raw, err := io.ReadAll(resp.Body)
@@ -618,7 +618,7 @@ func gatewayJSONRequest(method, route string, query url.Values, body any, dst an
 		return nil
 	}
 	if err := json.Unmarshal(payload, dst); err != nil {
-		return fmt.Errorf("解析外置微信网关响应失败: %w", err)
+		return fmt.Errorf("解析外置 ClawBot 网关响应失败: %w", err)
 	}
 	return nil
 }
@@ -627,7 +627,7 @@ func gatewayEndpoint(route string, query url.Values) (string, string, error) {
 	snapshot := config.GetConfigSnapshot()
 	base := strings.TrimRight(strings.TrimSpace(snapshot.WechatGatewayURL), "/")
 	if base == "" {
-		return "", "", fmt.Errorf("微信网关地址未配置")
+		return "", "", fmt.Errorf("ClawBot 网关地址未配置")
 	}
 	if query != nil && len(query) > 0 {
 		route += "?" + query.Encode()

@@ -645,7 +645,7 @@ function dashboardOverviewMarkup(config) {
       meta: "主动推送系统概览"
     },
     {
-      label: "微信网关",
+      label: "ClawBot 网关",
       value: statusLabel(status.open_api_ready, "在线", "离线"),
       meta: statusLabel(status.bound, "绑定已完成", "等待绑定"),
       tone: status.open_api_ready ? "ok" : "warn"
@@ -696,7 +696,7 @@ function commandReferenceMarkup() {
     <section class="section-card reference-card command-reference-wide">
       <div class="section-head">
         <h3>常用指令</h3>
-        <span>微信入口</span>
+        <span>ClawBot 入口</span>
       </div>
       <div class="command-board">
         <div class="command-group">
@@ -853,16 +853,16 @@ function gatewayStatusMarkup() {
   return `
     <section class="section-card gateway-binding-card">
       <div class="section-head">
-        <h3>微信网关绑定</h3>
+        <h3>微信 ClawBot</h3>
         <span>${escapeHtml(bindState)}</span>
       </div>
       <div class="grid two gateway-config-grid">
         <label class="field">
-          <span>本地微信网关地址</span>
+          <span>ClawBot 网关地址</span>
           <input type="text" id="wechat_gateway_url" value="${escapeHtml(state.bootstrap?.config?.wechat_gateway_url || "http://127.0.0.1:5091")}" placeholder="例如：http://127.0.0.1:5091">
         </label>
         <label class="field">
-          <span>网关共享密钥</span>
+          <span>ClawBot 共享密钥</span>
           <input type="password" id="wechat_gateway_secret" value="${escapeHtml(state.bootstrap?.config?.wechat_gateway_secret || "")}" placeholder="可选，用于保护本地网关接口">
         </label>
       </div>
@@ -888,7 +888,7 @@ function gatewayStatusMarkup() {
           <div class="steps-card gateway-command-card">
             <div class="step-grid">
               <div class="step-item"><strong>扫码登录：</strong>生成二维码，用微信扫描并完成登录。</div>
-              <div class="step-item"><strong>绑定入口：</strong>先发任意消息激活会话，再发送当前绑定码。</div>
+              <div class="step-item"><strong>绑定 ClawBot：</strong>先发任意消息激活会话，再发送当前绑定码。</div>
             </div>
             <div class="command-strip">
               <span>菜单</span><span>状态</span><span>通知</span><span>存储</span><span>Docker</span><span>进程</span><span>备份</span><span>电源</span><span>UPS</span><span>风扇2</span><span>CPU1</span>
@@ -903,7 +903,7 @@ function gatewayStatusMarkup() {
               <button type="button" class="ghost-btn" id="submitVerifyCodeBtn">提交验证码</button>
             </div>
           ` : ""}
-          ${status.entry_bind_time ? `<div class="meta-line">微信登录时间：${escapeHtml(status.entry_bind_time)}</div>` : ""}
+          ${status.entry_bind_time ? `<div class="meta-line">ClawBot 登录时间：${escapeHtml(status.entry_bind_time)}</div>` : ""}
           ${status.bind_time ? `<div class="meta-line">NasNotify 绑定时间：${escapeHtml(status.bind_time)}</div>` : ""}
           ${visibleTips.length ? `
             <div class="tips-list">
@@ -953,16 +953,16 @@ function setupBody(config) {
           ${enterpriseWechatForm(config, "single-desktop")}
           <section class="section-card">
             <div class="section-head">
-              <h3>微信网关配置</h3>
+              <h3>微信 ClawBot 配置</h3>
               <span>默认本机</span>
             </div>
             <div class="grid two single-desktop">
               <label class="field">
-                <span>本地微信网关地址</span>
+                <span>ClawBot 网关地址</span>
                 <input type="text" id="wechat_gateway_url" value="${escapeHtml(config.wechat_gateway_url || "http://127.0.0.1:5091")}" placeholder="例如：http://127.0.0.1:5091">
               </label>
               <label class="field">
-                <span>网关共享密钥</span>
+                <span>ClawBot 共享密钥</span>
                 <input type="password" id="wechat_gateway_secret" value="${escapeHtml(config.wechat_gateway_secret || "")}" placeholder="可选，用于保护本地网关接口">
               </label>
             </div>
@@ -1011,7 +1011,7 @@ function dashboardBody(config) {
     { id: "overview", label: "运行总览", meta: "状态速览" },
     { id: "settings", label: "基础设置", meta: "NAS / 轮询" },
     { id: "enterprise", label: "企业微信", meta: "回调 / 菜单" },
-    { id: "gateway", label: "微信绑定", meta: "扫码 / 绑定码" },
+    { id: "gateway", label: "微信 ClawBot", meta: "扫码 / 绑定码" },
     { id: "commands", label: "指令操作", meta: "测试 / 参考" }
   ];
   const tabIds = new Set(tabs.map((tab) => tab.id));
@@ -1101,7 +1101,7 @@ function dashboardBody(config) {
             <strong>${escapeHtml(config.system_status_interval_minutes || 60)} 分钟一次</strong>
           </div>
           <div>
-            <span>微信入口</span>
+            <span>ClawBot</span>
             <strong>${statusLabel(state.gatewayStatus?.bound, "已绑定", "待绑定")}</strong>
           </div>
         </div>
@@ -1161,11 +1161,11 @@ function renderApp() {
   if (view === "setup") {
     appRoot().innerHTML = shellTemplate({
       title: "初始化 NasNotify",
-      subtitle: "完成初始化后即可直接在 NAS 页面内管理通知与微信绑定。",
+      subtitle: "完成初始化后即可直接在 NAS 页面内管理通知与微信 ClawBot。",
       sideTitle: "单机通知应用",
-      sideText: "面向当前这台绿联 NAS，使用本地微信网关收发通知，并通过 NAS 内嵌路由访问。",
-      sidePills: ["本机 NAS", "微信网关", "首次部署"],
-      sideList: ["初始化完成后即可登录控制台。", "微信入口绑定完成后可直接发送固定指令。", "所有请求都走 NAS 路由代理。"],
+      sideText: "面向当前这台绿联 NAS，使用微信 ClawBot 收发通知，并通过 NAS 内嵌路由访问。",
+      sidePills: ["本机 NAS", "微信 ClawBot", "首次部署"],
+      sideList: ["初始化完成后即可登录控制台。", "ClawBot 绑定完成后可直接发送固定指令。", "所有请求都走 NAS 路由代理。"],
       body: setupBody(config),
       viewClass: "view-setup"
     });
@@ -1178,10 +1178,10 @@ function renderApp() {
     appRoot().innerHTML = shellTemplate({
       title: "登录控制台",
       subtitle: "输入管理员密码后继续管理通知、绑定和查询指令。",
-      sideTitle: "微信网关版",
-      sideText: "登录后即可查看 NAS 状态、微信绑定情况和当前轮询配置。",
+      sideTitle: "微信 ClawBot",
+      sideText: "登录后即可查看 NAS 状态、ClawBot 绑定情况和当前轮询配置。",
       sidePills: ["控制台登录", "配置管理"],
-      sideList: ["进入后可调整轮询周期、NAS 管理账号和微信网关参数。", "常用命令与绑定状态都会集中展示。"],
+      sideList: ["进入后可调整轮询周期、NAS 管理账号和 ClawBot 参数。", "常用命令与绑定状态都会集中展示。"],
       body: loginBody(),
       viewClass: "view-login"
     });
@@ -1192,7 +1192,7 @@ function renderApp() {
 
   appRoot().innerHTML = shellTemplate({
     title: "本机绿联 NAS 管理",
-    subtitle: "在一个窗口内完成轮询、账号、微信绑定和常用指令管理。",
+    subtitle: "在一个窗口内完成轮询、账号、微信 ClawBot 和常用指令管理。",
     sideTitle: "固定指令机器人",
     sideText: "绑定后接收系统通知，并响应状态、存储、风扇和 CPU 等固定指令。",
     sidePills: [
@@ -1208,7 +1208,7 @@ function renderApp() {
     ],
     sideList: [
       "左侧概览聚合轮询节奏、网关状态和本机 NAS 配置。",
-      "右侧聚焦微信绑定、二维码和绑定码。",
+      "右侧聚焦微信 ClawBot、二维码和绑定码。",
       "底部保留完整命令参考与快捷操作。"
     ],
     actionBar: `<button type="button" class="ghost-btn" id="logoutBtn">退出登录</button>`,
@@ -1302,7 +1302,7 @@ function validateConfigForm(config, { requireLocalNasPassword = false } = {}) {
     return "首次初始化请填写本机 NAS 管理密码。";
   }
   if (!config.wechat_gateway_url) {
-    return "请填写本地微信网关地址。";
+    return "请填写 ClawBot 网关地址。";
   }
   return "";
 }
@@ -1378,7 +1378,7 @@ function bindGatewayActions(errorId) {
       clearFormError(errorId);
       try {
         await api("/wechat/unbind", { method: "POST", body: "{}" });
-        state.flash = "微信入口已解绑，并已生成新的绑定码。";
+        state.flash = "微信 ClawBot 已解绑，并已生成新的绑定码。";
         await loadGatewayStatus();
         renderApp();
       } catch (error) {
@@ -1443,7 +1443,7 @@ function bindSetup() {
           config
         })
       });
-      state.flash = "初始化完成。登录后即可扫码并使用绑定码完成微信入口绑定。";
+      state.flash = "初始化完成。登录后即可扫码并使用绑定码完成微信 ClawBot 绑定。";
       await bootstrapApp();
     } catch (error) {
       showFormError("setupError", error.message);
@@ -1533,7 +1533,7 @@ function bindDashboard() {
       clearFormError("dashboardError");
       try {
         await api("/test-push", { method: "POST", body: "{}" });
-        state.flash = "测试通知已发送，请检查微信入口。";
+        state.flash = "测试通知已发送，请检查 ClawBot。";
         await loadGatewayStatus();
         renderApp();
       } catch (error) {
@@ -1547,7 +1547,7 @@ function bindDashboard() {
       clearFormError("dashboardError");
       try {
         await api("/health-check", { method: "POST", body: "{}" });
-        state.flash = "巡检报告已发送，请检查微信入口。";
+        state.flash = "巡检报告已发送，请检查 ClawBot。";
         await loadGatewayStatus();
         renderApp();
       } catch (error) {

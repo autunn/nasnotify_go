@@ -21,7 +21,7 @@ nasnotify_go/
 ├── internal/nas/               # 绿联 NAS API、查询命令、消息文本与图片卡片数据
 ├── internal/notify/            # 企业微信、ClawBot、统一推送入口
 ├── internal/notifycard/        # 黑金 PNG 卡片渲染器与字体资源
-├── internal/wechatgateway/     # 内置微信网关状态、二维码、轮询服务
+├── internal/wechatgateway/     # 内置 ClawBot 网关状态、二维码、轮询服务
 ├── frontend/ugreen-app/        # Vite 黑金后台页面
 ├── macos/NasNotifyGo/          # macOS 桌面窗口壳应用
 ├── packaging/ugreen-native-app/# 绿联 UPK 打包骨架
@@ -101,10 +101,11 @@ http://<你的公网地址>:5080/wx-receive
 ```
 
 保存配置后，程序会尝试同步企业微信自定义菜单。企业微信图片消息会先上传 PNG，再发送图片；失败时回退到文本/图文。
+企业微信菜单按 `查询`、`服务`、`控制` 三组组织：查询负责巡检、状态、通知和存储；服务负责 Docker、进程、备份、电源和 UPS；控制提供风扇静音/标准/全速、CPU 性能说明和远程唤醒。CPU 三档也可直接发送 `CPU0`、`CPU1`、`CPU2` 执行。
 
 ### 微信 ClawBot
 
-后台的“微信绑定”页可以生成二维码并扫码登录。绑定完成后，微信里可发送：
+后台的“微信 ClawBot”页可以生成二维码并扫码登录。绑定完成后，微信里可发送：
 
 ```text
 菜单

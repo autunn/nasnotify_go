@@ -195,8 +195,14 @@ func processWechatEvent(c *gin.Context, encryptStr string) {
 			case "GET_UGREEN_NOTIFY":
 				go nas.PushUGreenNotifyStatus()
 
+			case "GET_UGREEN_QUERY_HELP":
+				go notify.WechatPush("更多查询指令\n\n可直接在企业微信聊天框发送：\n\nDocker：查看容器运行概览\n进程：查看资源占用 TOP 5\n备份：查看备份任务状态\n电源：查看电源与休眠配置\nUPS：查看 UPS 供电状态\n测试：发送测试通知\n\n控制指令可在“控制”菜单直接点击，也可发送：风扇1 / 风扇2 / 风扇3，CPU0 / CPU1 / CPU2。")
+
 			case "GET_UGREEN_PERF":
 				go notify.WechatPush("️ **性能控制向导**\n\n请直接在聊天框回复以下指令：\n\n **风扇控制**\n「风扇 1 设备名」: 静音模式\n「风扇 2 设备名」: 正常模式\n「风扇 3 设备名」: 全速模式\n\n⚡ **CPU 模式**\n「CPU 0 设备名」: 高性能\n「CPU 1 设备名」: 均衡\n「CPU 2 设备名」: 节能\n\n如果只配置了一台绿联设备，也可以直接省略设备名。")
+
+			case "GET_UGREEN_CPU_HELP":
+				go notify.WechatPush("CPU 性能设置\n\n请直接发送以下指令执行：\n\nCPU0：高性能模式，优先响应速度\nCPU1：均衡模式，适合日常使用\nCPU2：节能模式，优先低功耗与低温\n\n风扇转速可直接点击“控制”菜单里的风扇静音、风扇标准、风扇全速。")
 
 			case "GET_TEST_PUSH":
 				go func() {
@@ -207,19 +213,64 @@ func processWechatEvent(c *gin.Context, encryptStr string) {
 
 			case "GET_NAS_WOL":
 				go nas.HandleWakeMenuCommand()
+
+			case "SET_UGREEN_FAN_1":
+				go nas.HandleUGreenPerfCommand("风扇1")
+
+			case "SET_UGREEN_FAN_2":
+				go nas.HandleUGreenPerfCommand("风扇2")
+
+			case "SET_UGREEN_FAN_3":
+				go nas.HandleUGreenPerfCommand("风扇3")
+
+			case "SET_UGREEN_CPU_0":
+				go nas.HandleUGreenPerfCommand("CPU0")
+
+			case "SET_UGREEN_CPU_1":
+				go nas.HandleUGreenPerfCommand("CPU1")
+
+			case "SET_UGREEN_CPU_2":
+				go nas.HandleUGreenPerfCommand("CPU2")
 			}
 		}
 
 		// ==================== 2. 拦截用户文本输入 ====================
 		if plainMsg.MsgType == "text" {
 			content := strings.TrimSpace(plainMsg.Content)
-			upperContent := strings.ToUpper(content)
+			normalized := normalizeWechatCommand(content)
 
-			if strings.HasPrefix(content, "风扇") || strings.HasPrefix(upperContent, "CPU") {
+			switch {
+			case normalized == "巡检" || normalized == "诊断" || normalized == "health" || normalized == "check":
+				go nas.PushUGreenHealthCheck()
+			case normalized == "状态" || normalized == "系统" || normalized == "概览" || normalized == "system" || normalized == "status" || normalized == "info":
+				go nas.PushUGreenSystemStatus()
+			case normalized == "通知" || normalized == "消息" || normalized == "notice" || normalized == "notify" || normalized == "message":
+				go nas.PushUGreenNotifyStatus()
+			case normalized == "存储" || normalized == "硬盘" || normalized == "磁盘" || normalized == "storage" || normalized == "disk":
+				go nas.PushUGreenStorageStatus()
+			case normalized == "docker" || normalized == "容器" || normalized == "container":
+				go nas.PushUGreenDockerStatus()
+			case normalized == "进程" || normalized == "服务" || normalized == "ps" || normalized == "process":
+				go nas.PushUGreenPsStatus()
+			case normalized == "备份" || normalized == "同步" || normalized == "backup" || normalized == "sync":
+				go nas.PushUGreenBackupStatus()
+			case normalized == "电源" || normalized == "休眠" || normalized == "power" || normalized == "sleep":
+				go nas.PushUGreenPowerStatus()
+			case normalized == "ups":
+				go nas.PushUGreenUpsStatus()
+			case normalized == "测试" || normalized == "test":
+				go func() {
+					if err := notify.PushTestCard(); err != nil {
+						notify.WechatPush("测试通知发送失败: " + err.Error())
+					}
+				}()
+			case strings.HasPrefix(content, "风扇") || strings.HasPrefix(strings.ToUpper(content), "CPU") || strings.HasPrefix(strings.ToUpper(content), "FAN"):
 				go nas.HandleUGreenPerfCommand(content)
-			} else if strings.HasPrefix(content, "唤醒") {
-				targetName := strings.TrimSpace(strings.TrimPrefix(content, "唤醒"))
+			case strings.HasPrefix(content, "唤醒") || normalized == "wol" || normalized == "wake" || strings.HasPrefix(normalized, "wol ") || strings.HasPrefix(normalized, "wake "):
+				targetName := enterpriseWakeTargetFromCommand(content, normalized)
 				go nas.HandleWakeCommand(targetName)
+			default:
+				go notify.WechatPush("未识别指令。\n\n可发送：巡检、状态、通知、存储、Docker、进程、备份、电源、UPS、测试、唤醒、风扇1、风扇2、风扇3、CPU0、CPU1、CPU2。")
 			}
 		}
 	}
@@ -245,4 +296,24 @@ func verifyWeChatSignature(c *gin.Context, encrypt string) bool {
 	h := sha1.New()
 	h.Write([]byte(strings.Join(params, "")))
 	return fmt.Sprintf("%x", h.Sum(nil)) == msgSig
+}
+
+func enterpriseWakeTargetFromCommand(command, normalized string) string {
+	switch {
+	case strings.HasPrefix(command, "唤醒"):
+		return strings.TrimSpace(strings.TrimPrefix(command, "唤醒"))
+	case strings.HasPrefix(normalized, "wol "):
+		return strings.TrimSpace(command[3:])
+	case strings.HasPrefix(normalized, "wake "):
+		return strings.TrimSpace(command[4:])
+	default:
+		return ""
+	}
+}
+
+func normalizeWechatCommand(text string) string {
+	text = strings.TrimSpace(text)
+	text = strings.Trim(text, "`~'\"“”‘’。、?!！？：；;，,")
+	text = strings.NewReplacer("\u3000", " ", "\t", " ", "\r", " ", "\n", " ").Replace(text)
+	return strings.ToLower(strings.Join(strings.Fields(text), " "))
 }

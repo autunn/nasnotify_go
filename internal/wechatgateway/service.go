@@ -187,7 +187,7 @@ func (s *Service) GetStatus() Status {
 		Status:         "idle",
 		NeedVerifyCode: false,
 		Tips: []string{
-			"默认使用内置微信网关，无需额外启动第二个服务。",
+			"默认使用内置 ClawBot 网关，无需额外启动第二个服务。",
 			"如果扫码后微信提示数字验证码，请在管理页补充提交。",
 			"完成绑定后，可使用菜单、状态、通知、存储、Docker、进程、备份、电源、UPS、测试、风扇2、CPU1等固定指令。",
 		},
@@ -307,10 +307,10 @@ func (s *Service) SendTextMessage(title, text string) error {
 	s.mu.Unlock()
 
 	if token == "" {
-		return fmt.Errorf("微信网关尚未完成登录")
+		return fmt.Errorf("ClawBot 网关尚未完成登录")
 	}
 	if peerUserID == "" {
-		return fmt.Errorf("还没有可用的微信会话，请先让用户向微信入口发送一条消息")
+		return fmt.Errorf("还没有可用的 ClawBot 会话，请先向 ClawBot 发送一条消息")
 	}
 
 	fullText := text
@@ -373,10 +373,10 @@ func (s *Service) SendImageMessage(pngData []byte) error {
 	s.mu.Unlock()
 
 	if token == "" {
-		return fmt.Errorf("微信网关尚未完成登录")
+		return fmt.Errorf("ClawBot 网关尚未完成登录")
 	}
 	if peerUserID == "" {
-		return fmt.Errorf("还没有可用的微信会话，请先让用户向微信入口发送一条消息")
+		return fmt.Errorf("还没有可用的 ClawBot 会话，请先向 ClawBot 发送一条消息")
 	}
 
 	client := ilink.NewClient(
