@@ -11,6 +11,7 @@ type Card struct {
 	Metrics   []Metric
 	Sections  []Section
 	Footer    string
+	ActionURL string
 }
 
 type Metric struct {

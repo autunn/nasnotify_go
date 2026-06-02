@@ -46,6 +46,7 @@ func WechatPush(content string) error {
 }
 
 func WechatPushCard(card notifycard.Card, fallbackText string) error {
+	card = enrichNotifyCard(card)
 	fallbackText = strings.TrimSpace(fallbackText)
 	if fallbackText == "" {
 		fallbackText = strings.TrimSpace(card.Title)

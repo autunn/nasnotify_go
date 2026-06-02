@@ -119,6 +119,7 @@ func ClawBotPushCard(card notifycard.Card, fallbackText string) error {
 		return fmt.Errorf("wechat gateway is not configured")
 	}
 
+	card = enrichNotifyCard(card)
 	fallbackText = strings.TrimSpace(fallbackText)
 	if fallbackText == "" {
 		fallbackText = strings.TrimSpace(card.Title)

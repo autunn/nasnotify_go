@@ -22,7 +22,8 @@ func TestRenderPNG(t *testing.T) {
 			{Title: "设备信息", Lines: []string{"版本：UGOS Pro 1.0", "最近启动：2026-06-01 10:20"}},
 			{Title: "存储概览", Lines: []string{"系统卷 · 72% · 1.4 TB / 2.0 TB", "媒体卷 · 18% · 200 GB / 1.0 TB"}},
 		},
-		Footer: "图片发送失败时，会自动退回到原有的文字通知。",
+		Footer:    "图片发送失败时，会自动退回到原有的文字通知。",
+		ActionURL: "https://nas.autunn.top/ugreen",
 	}
 
 	raw, err := RenderPNG(card)
@@ -51,5 +52,18 @@ func TestRenderPNG(t *testing.T) {
 	}
 	if topLeft.R != 0 || topLeft.G != 0 || topLeft.B != 0 {
 		t.Fatalf("top-left pixel = %#v, want pure black", topLeft)
+	}
+}
+
+func TestBuildActionPanel(t *testing.T) {
+	panel := buildActionPanel("https://nas.autunn.top/ugreen/v1/desktop")
+	if panel == nil {
+		t.Fatal("buildActionPanel() returned nil")
+	}
+	if panel.QRImage == nil {
+		t.Fatal("buildActionPanel() did not create QR image")
+	}
+	if got := panel.DisplayURL; got != "nas.autunn.top/ugreen/v1/desktop" {
+		t.Fatalf("DisplayURL = %q, want %q", got, "nas.autunn.top/ugreen/v1/desktop")
 	}
 }

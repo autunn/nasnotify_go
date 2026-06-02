@@ -3,38 +3,44 @@ package notifycard
 import (
 	"bytes"
 	_ "embed"
+	"image"
 	"image/color"
 	"image/png"
 	"math"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/fogleman/gg"
+	qrcode "github.com/skip2/go-qrcode"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/opentype"
 )
 
-//go:embed assets/NotoSerifSC-VF.ttf
+//go:embed assets/Dengb.ttf
 var embeddedTitleFont []byte
 
-//go:embed assets/NotoSansSC-VF.ttf
+//go:embed assets/Deng.ttf
 var embeddedBodyFont []byte
 
 const (
-	canvasWidth     = 1280
-	pagePadding     = 24.0
-	outerRadius     = 18.0
-	blockRadius     = 14.0
-	metricRadius    = 14.0
-	contentPadding  = 56.0
-	sectionGap      = 20.0
-	metricHeight    = 236.0
-	minCanvasHeight = 980
-	headerBottomGap = 24.0
-	sectionLineGap  = 10.0
-	badgeHeight     = 42.0
-	badgeGap        = 10.0
+	canvasWidth       = 1280
+	pagePadding       = 24.0
+	outerRadius       = 18.0
+	blockRadius       = 14.0
+	metricRadius      = 14.0
+	contentPadding    = 56.0
+	sectionGap        = 20.0
+	metricHeight      = 236.0
+	minCanvasHeight   = 980
+	headerBottomGap   = 24.0
+	sectionLineGap    = 10.0
+	badgeHeight       = 42.0
+	badgeGap          = 10.0
+	actionPanelHeight = 248.0
+	actionQRWrapSize  = 192.0
+	actionPanelInset  = 28.0
 )
 
 var (
@@ -48,27 +54,31 @@ var (
 )
 
 type theme struct {
-	background  color.Color
-	cardTop     color.Color
-	cardBottom  color.Color
-	cardStroke  color.Color
-	topLine     color.Color
-	divider     color.Color
-	text        color.Color
-	textSoft    color.Color
-	textMute    color.Color
-	title       color.Color
-	accent      color.Color
-	chipBg      color.Color
-	chipStroke  color.Color
-	chipText    color.Color
-	panelTop    color.Color
-	panelBottom color.Color
-	panelStroke color.Color
-	barTrack    color.Color
-	good        color.Color
-	warm        color.Color
-	danger      color.Color
+	background   color.Color
+	cardTop      color.Color
+	cardBottom   color.Color
+	cardStroke   color.Color
+	topLine      color.Color
+	divider      color.Color
+	text         color.Color
+	textSoft     color.Color
+	textMute     color.Color
+	title        color.Color
+	accent       color.Color
+	chipBg       color.Color
+	chipStroke   color.Color
+	chipText     color.Color
+	panelTop     color.Color
+	panelBottom  color.Color
+	panelStroke  color.Color
+	barTrack     color.Color
+	good         color.Color
+	warm         color.Color
+	danger       color.Color
+	actionHint   color.Color
+	qrWrapBg     color.Color
+	qrWrapStroke color.Color
+	qrCodeBg     color.Color
 }
 
 type badgeItem struct {
@@ -76,45 +86,60 @@ type badgeItem struct {
 	Width float64
 }
 
+type actionPanel struct {
+	URL        string
+	DisplayURL string
+	QRImage    image.Image
+}
+
 func RenderPNG(card Card) ([]byte, error) {
 	card = card.WithTimestamp(time.Now())
 
 	m := newTheme()
 	measure := gg.NewContext(10, 10)
+	action := buildActionPanel(strings.TrimSpace(card.ActionURL))
 
-	brandFace, err := bodyFontFace(19)
+	brandFace, err := titleFontFace(21)
 	if err != nil {
 		return nil, err
 	}
-	titleFace, _, err := fitTitleFace(measure, strings.TrimSpace(card.Title), float64(canvasWidth)-pagePadding*2-contentPadding*2-260, 64, 42)
+	titleFace, _, err := fitTitleFace(measure, strings.TrimSpace(card.Title), float64(canvasWidth)-pagePadding*2-contentPadding*2-260, 68, 48)
 	if err != nil {
 		return nil, err
 	}
-	metaFace, err := bodyFontFace(23)
+	metaFace, err := titleFontFace(24)
 	if err != nil {
 		return nil, err
 	}
-	summaryFace, err := bodyFontFace(28)
+	summaryFace, err := bodyFontFace(30)
 	if err != nil {
 		return nil, err
 	}
-	badgeFace, err := bodyFontFace(18)
+	badgeFace, err := titleFontFace(20)
 	if err != nil {
 		return nil, err
 	}
-	metricLabelFace, err := bodyFontFace(22)
+	metricLabelFace, err := titleFontFace(24)
 	if err != nil {
 		return nil, err
 	}
-	metricHintFace, err := bodyFontFace(18)
+	metricHintFace, err := titleFontFace(20)
 	if err != nil {
 		return nil, err
 	}
-	sectionTitleFace, err := titleFontFace(26)
+	sectionTitleFace, err := titleFontFace(30)
 	if err != nil {
 		return nil, err
 	}
-	sectionBodyFace, err := bodyFontFace(24)
+	sectionBodyFace, err := bodyFontFace(27)
+	if err != nil {
+		return nil, err
+	}
+	actionTitleFace, err := titleFontFace(28)
+	if err != nil {
+		return nil, err
+	}
+	actionHintFace, err := bodyFontFace(24)
 	if err != nil {
 		return nil, err
 	}
@@ -126,6 +151,7 @@ func RenderPNG(card Card) ([]byte, error) {
 	metricsHeight := measureMetricsHeight(card.Metrics)
 	sectionsHeight := measureSectionsHeight(measure, card.Sections, innerWidth, sectionTitleFace, sectionBodyFace)
 	footerHeight := measureFooterHeight(measure, card.Footer, innerWidth, sectionTitleFace, sectionBodyFace)
+	actionHeight := measureActionPanelHeight(action)
 
 	contentHeight := metricsHeight
 	if metricsHeight > 0 && sectionsHeight > 0 {
@@ -137,6 +163,12 @@ func RenderPNG(card Card) ([]byte, error) {
 			contentHeight += sectionGap
 		}
 		contentHeight += footerHeight
+	}
+	if actionHeight > 0 {
+		if contentHeight > 0 {
+			contentHeight += sectionGap
+		}
+		contentHeight += actionHeight
 	}
 
 	totalHeight := int(math.Ceil(pagePadding*2 + headerHeight + headerBottomGap + contentHeight + contentPadding))
@@ -154,7 +186,7 @@ func RenderPNG(card Card) ([]byte, error) {
 	drawOuterCard(dc, outerX, outerY, outerWidth, outerHeight, m)
 	contentStartY := drawHeader(dc, outerX, outerY, outerWidth, card, m, innerWidth, brandFace, titleFace, metaFace, summaryFace, badgeFace)
 	drawDivider(dc, outerX+contentPadding, contentStartY-10, innerWidth, m.divider)
-	drawContent(dc, outerX, contentStartY+headerBottomGap, outerWidth, card, m, metricLabelFace, metricHintFace, sectionTitleFace, sectionBodyFace)
+	drawContent(dc, outerX, contentStartY+headerBottomGap, outerWidth, card, action, m, metricLabelFace, metricHintFace, sectionTitleFace, sectionBodyFace, actionTitleFace, actionHintFace)
 
 	var out bytes.Buffer
 	if err := png.Encode(&out, dc.Image()); err != nil {
@@ -250,7 +282,7 @@ func drawTimestampChip(dc *gg.Context, right, top float64, text string, m theme,
 	dc.DrawStringAnchored(text, chipX+chipWidth/2, chipY+badgeHeight/2+0.5, 0.5, 0.4)
 }
 
-func drawContent(dc *gg.Context, x, y, width float64, card Card, m theme, metricLabelFace, metricHintFace, sectionTitleFace, sectionBodyFace font.Face) {
+func drawContent(dc *gg.Context, x, y, width float64, card Card, action *actionPanel, m theme, metricLabelFace, metricHintFace, sectionTitleFace, sectionBodyFace, actionTitleFace, actionHintFace font.Face) {
 	cursorY := y
 	innerWidth := width - contentPadding*2
 	left := x + contentPadding
@@ -265,7 +297,7 @@ func drawContent(dc *gg.Context, x, y, width float64, card Card, m theme, metric
 			drawMetric(dc, metricX, metricY, columnWidth, metricHeight, metric, m, metricLabelFace, metricHintFace)
 		}
 		cursorY += measureMetricsHeight(card.Metrics)
-		if len(card.Sections) > 0 || strings.TrimSpace(card.Footer) != "" {
+		if len(card.Sections) > 0 || strings.TrimSpace(card.Footer) != "" || action != nil {
 			cursorY += sectionGap
 		}
 	}
@@ -274,7 +306,7 @@ func drawContent(dc *gg.Context, x, y, width float64, card Card, m theme, metric
 		height := calcSectionHeight(dc, section, innerWidth, sectionTitleFace, sectionBodyFace)
 		drawSection(dc, left, cursorY, innerWidth, height, section, m, sectionTitleFace, sectionBodyFace)
 		cursorY += height
-		if index < len(card.Sections)-1 || strings.TrimSpace(card.Footer) != "" {
+		if index < len(card.Sections)-1 || strings.TrimSpace(card.Footer) != "" || action != nil {
 			cursorY += sectionGap
 		}
 	}
@@ -286,6 +318,14 @@ func drawContent(dc *gg.Context, x, y, width float64, card Card, m theme, metric
 		}
 		height := calcSectionHeight(dc, footerSection, innerWidth, sectionTitleFace, sectionBodyFace)
 		drawSection(dc, left, cursorY, innerWidth, height, footerSection, m, sectionTitleFace, sectionBodyFace)
+		cursorY += height
+		if action != nil {
+			cursorY += sectionGap
+		}
+	}
+
+	if action != nil {
+		drawActionPanel(dc, left, cursorY, innerWidth, *action, m, actionTitleFace, actionHintFace)
 	}
 }
 
@@ -314,7 +354,7 @@ func drawMetric(dc *gg.Context, x, y, width, height float64, metric Metric, m th
 		valueTop = y + 98
 	}
 
-	valueFace, _, err := fitFontFace(titleFontFace, dc, strings.TrimSpace(metric.Value), width-48, 54, 32)
+	valueFace, _, err := fitFontFace(titleFontFace, dc, strings.TrimSpace(metric.Value), width-48, 60, 36)
 	if err == nil {
 		dc.SetFontFace(valueFace)
 		dc.SetColor(toneColor(metric.Tone, m))
@@ -434,6 +474,13 @@ func measureFooterHeight(dc *gg.Context, footer string, width float64, titleFace
 	}, width, titleFace, bodyFace)
 }
 
+func measureActionPanelHeight(action *actionPanel) float64 {
+	if action == nil {
+		return 0
+	}
+	return actionPanelHeight
+}
+
 func calcSectionHeight(dc *gg.Context, section Section, width float64, titleFace, bodyFace font.Face) float64 {
 	bodyWidth := width - 96
 	total := 92.0
@@ -484,6 +531,127 @@ func drawDivider(dc *gg.Context, x, y, width float64, c color.Color) {
 	dc.DrawRoundedRectangle(x, y, width, 1.2, 0.6)
 	dc.SetColor(c)
 	dc.Fill()
+}
+
+func drawActionPanel(dc *gg.Context, x, y, width float64, action actionPanel, m theme, titleFace, hintFace font.Face) {
+	fill := gg.NewLinearGradient(x, y, x, y+actionPanelHeight)
+	fill.AddColorStop(0, m.panelTop)
+	fill.AddColorStop(1, m.panelBottom)
+
+	dc.DrawRoundedRectangle(x, y, width, actionPanelHeight, blockRadius)
+	dc.SetFillStyle(fill)
+	dc.Fill()
+
+	dc.DrawRoundedRectangle(x, y, width, actionPanelHeight, blockRadius)
+	dc.SetColor(m.panelStroke)
+	dc.SetLineWidth(1.0)
+	dc.Stroke()
+
+	left := x + actionPanelInset
+	top := y + actionPanelInset
+	qrX := x + width - actionPanelInset - actionQRWrapSize
+	qrY := y + (actionPanelHeight-actionQRWrapSize)/2
+	textWidth := qrX - left - 28
+
+	dc.SetFontFace(titleFace)
+	dc.SetColor(m.title)
+	dc.DrawString("扫码打开 NAS", left, top+lineHeight(titleFace)-4)
+
+	copyTop := top + lineHeight(titleFace) + 18
+	dc.SetFontFace(hintFace)
+	dc.SetColor(m.textSoft)
+	dc.DrawStringWrapped("右下角二维码可直接跳转到 NAS 页面，适合在手机端快速返回控制台。", left, copyTop, 0, 0, textWidth, 1.22, gg.AlignLeft)
+
+	labelTop := y + actionPanelHeight - actionPanelInset - 88
+	dc.SetColor(m.actionHint)
+	dc.DrawString("NAS 地址", left, labelTop)
+
+	urlBoxTop := labelTop + 16
+	urlBoxHeight := 64.0
+	dc.DrawRoundedRectangle(left, urlBoxTop, textWidth, urlBoxHeight, 14)
+	dc.SetColor(m.chipBg)
+	dc.Fill()
+	dc.DrawRoundedRectangle(left, urlBoxTop, textWidth, urlBoxHeight, 14)
+	dc.SetColor(m.chipStroke)
+	dc.SetLineWidth(1.0)
+	dc.Stroke()
+
+	display := strings.TrimSpace(action.DisplayURL)
+	displayFace, _, err := fitBodyFace(dc, display, textWidth-28, 26, 18)
+	if err == nil {
+		dc.SetFontFace(displayFace)
+	}
+	dc.SetColor(m.chipText)
+	dc.DrawStringWrapped(display, left+14, urlBoxTop+20, 0, 0, textWidth-28, 1.08, gg.AlignLeft)
+
+	dc.DrawRoundedRectangle(qrX, qrY, actionQRWrapSize, actionQRWrapSize, 20)
+	dc.SetColor(m.qrWrapBg)
+	dc.Fill()
+	dc.DrawRoundedRectangle(qrX, qrY, actionQRWrapSize, actionQRWrapSize, 20)
+	dc.SetColor(m.qrWrapStroke)
+	dc.SetLineWidth(1.1)
+	dc.Stroke()
+
+	if action.QRImage != nil {
+		qrInset := 16.0
+		qrInnerX := qrX + qrInset
+		qrInnerY := qrY + qrInset
+		qrInnerSize := actionQRWrapSize - qrInset*2
+		dc.DrawRoundedRectangle(qrInnerX, qrInnerY, qrInnerSize, qrInnerSize, 12)
+		dc.SetColor(m.qrCodeBg)
+		dc.Fill()
+		dc.DrawImageAnchored(action.QRImage, int(qrInnerX+qrInnerSize/2), int(qrInnerY+qrInnerSize/2), 0.5, 0.5)
+	}
+}
+
+func buildActionPanel(rawURL string) *actionPanel {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return nil
+	}
+
+	panel := &actionPanel{
+		URL:        rawURL,
+		DisplayURL: formatActionDisplayURL(rawURL),
+	}
+
+	qr, err := qrcode.New(rawURL, qrcode.Medium)
+	if err != nil {
+		return panel
+	}
+	panel.QRImage = qr.Image(int(actionQRWrapSize - 32))
+	return panel
+}
+
+func formatActionDisplayURL(rawURL string) string {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || parsed == nil {
+		return ellipsize(strings.TrimSpace(rawURL), 72)
+	}
+	if parsed.Host == "" {
+		return ellipsize(strings.TrimSpace(rawURL), 72)
+	}
+
+	path := strings.TrimSpace(parsed.EscapedPath())
+	if path == "" || path == "/" {
+		return parsed.Host
+	}
+	return ellipsize(parsed.Host+path, 72)
+}
+
+func ellipsize(value string, maxRunes int) string {
+	value = strings.TrimSpace(value)
+	if value == "" || maxRunes <= 0 {
+		return value
+	}
+	runes := []rune(value)
+	if len(runes) <= maxRunes {
+		return value
+	}
+	if maxRunes <= 3 {
+		return string(runes[:maxRunes])
+	}
+	return string(runes[:maxRunes-3]) + "..."
 }
 
 func compactBadges(values []string) []string {
@@ -662,27 +830,31 @@ func toneColor(t Tone, m theme) color.Color {
 
 func newTheme() theme {
 	return theme{
-		background:  hexColor("#000000"),
-		cardTop:     hexColor("#000000"),
-		cardBottom:  hexColor("#000000"),
-		cardStroke:  rgbaColor(212, 175, 88, 96),
-		topLine:     rgbaColor(241, 210, 124, 132),
-		divider:     rgbaColor(216, 173, 79, 74),
-		text:        hexColor("#fffaf0"),
-		textSoft:    hexColor("#d8cfbb"),
-		textMute:    hexColor("#b8ad95"),
-		title:       hexColor("#ffffff"),
-		accent:      hexColor("#f1d27c"),
-		chipBg:      hexColor("#000000"),
-		chipStroke:  rgbaColor(216, 173, 79, 132),
-		chipText:    hexColor("#f1d27c"),
-		panelTop:    hexColor("#000000"),
-		panelBottom: hexColor("#000000"),
-		panelStroke: rgbaColor(216, 173, 79, 86),
-		barTrack:    rgbaColor(216, 173, 79, 38),
-		good:        hexColor("#7bd8a4"),
-		warm:        hexColor("#f3c36f"),
-		danger:      hexColor("#ff877e"),
+		background:   hexColor("#000000"),
+		cardTop:      hexColor("#000000"),
+		cardBottom:   hexColor("#000000"),
+		cardStroke:   rgbaColor(212, 175, 88, 96),
+		topLine:      rgbaColor(241, 210, 124, 132),
+		divider:      rgbaColor(216, 173, 79, 74),
+		text:         hexColor("#fffaf0"),
+		textSoft:     hexColor("#d8cfbb"),
+		textMute:     hexColor("#b8ad95"),
+		title:        hexColor("#ffffff"),
+		accent:       hexColor("#f1d27c"),
+		chipBg:       hexColor("#000000"),
+		chipStroke:   rgbaColor(216, 173, 79, 132),
+		chipText:     hexColor("#f1d27c"),
+		panelTop:     hexColor("#000000"),
+		panelBottom:  hexColor("#000000"),
+		panelStroke:  rgbaColor(216, 173, 79, 86),
+		barTrack:     rgbaColor(216, 173, 79, 38),
+		good:         hexColor("#7bd8a4"),
+		warm:         hexColor("#f3c36f"),
+		danger:       hexColor("#ff877e"),
+		actionHint:   hexColor("#c9bea9"),
+		qrWrapBg:     hexColor("#020202"),
+		qrWrapStroke: rgbaColor(216, 173, 79, 132),
+		qrCodeBg:     hexColor("#ffffff"),
 	}
 }
 
