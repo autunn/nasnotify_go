@@ -1,7 +1,17 @@
-name: Build unsigned macOS DMG
+name: Build macOS DMG
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: "App version, for example v2026.06.02. Leave empty to use tag or date-run number."
+        required: false
+        type: string
+      sign_and_notarize:
+        description: "Use Developer ID signing and Apple notarization. Requires Apple secrets."
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -9,6 +19,8 @@ permissions:
 jobs:
   build:
     runs-on: macos-latest
+    env:
+      SIGN_AND_NOTARIZE: ${{ inputs.sign_and_notarize && '1' || '0' }}
 
     steps:
       - name: Checkout
@@ -28,19 +40,69 @@ jobs:
           cache-dependency-path: frontend/ugreen-app/package-lock.json
 
       - name: Set version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+          if [[ -n "$INPUT_VERSION" ]]; then
+            echo "APP_VERSION=$INPUT_VERSION" >> "$GITHUB_ENV"
+          elif [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
             echo "APP_VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
           else
             echo "APP_VERSION=v$(date +'%Y.%m.%d')-${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
           fi
 
-      - name: Build unsigned DMG
+      - name: Import Developer ID certificate
+        if: ${{ inputs.sign_and_notarize }}
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.MACOS_BUILD_KEYCHAIN_PASSWORD }}
         run: |
           set -euo pipefail
+
+          : "${MACOS_CERTIFICATE_P12_BASE64:?Missing secret MACOS_CERTIFICATE_P12_BASE64}"
+          : "${MACOS_CERTIFICATE_PASSWORD:?Missing secret MACOS_CERTIFICATE_PASSWORD}"
+
+          KEYCHAIN_PASSWORD="${KEYCHAIN_PASSWORD:-$(uuidgen)}"
+          CERTIFICATE_PATH="$RUNNER_TEMP/developer-id.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+
+          echo "$MACOS_CERTIFICATE_P12_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+
+      - name: Build DMG
+        env:
+          MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$SIGN_AND_NOTARIZE" == "1" ]]; then
+            : "${MACOS_CODESIGN_IDENTITY:?Missing secret MACOS_CODESIGN_IDENTITY}"
+            : "${APPLE_ID:?Missing secret APPLE_ID}"
+            : "${APPLE_TEAM_ID:?Missing secret APPLE_TEAM_ID}"
+            : "${APPLE_APP_SPECIFIC_PASSWORD:?Missing secret APPLE_APP_SPECIFIC_PASSWORD}"
+          fi
+
           VERSION="$APP_VERSION" \
             BUILD_VERSION="$GITHUB_RUN_NUMBER" \
-            SIGN_AND_NOTARIZE=0 \
+            SIGN_AND_NOTARIZE="$SIGN_AND_NOTARIZE" \
             ADHOC_SIGN=1 \
             CREATE_DMG=1 \
             bash ./scripts/build-macos-app.sh
@@ -48,5 +110,5 @@ jobs:
       - name: Upload DMG
         uses: actions/upload-artifact@v4
         with:
-          name: NasNotify-Go-macOS-unsigned-dmg
+          name: ${{ inputs.sign_and_notarize && 'NasNotify-Go-macOS-signed-notarized-dmg' || 'NasNotify-Go-macOS-unsigned-dmg' }}
           path: dist/NasNotify-Go-macOS-*.dmg
