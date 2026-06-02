@@ -668,7 +668,46 @@ func isUGreenCloudDeepLink(rawURL string) bool {
 	if err != nil || parsed == nil {
 		return false
 	}
-	return strings.EqualFold(parsed.Scheme, "ugreenpro") && strings.EqualFold(parsed.Host, "h5.ugnas.com")
+	if strings.EqualFold(parsed.Scheme, "ugreenpro") && strings.EqualFold(parsed.Host, "h5.ugnas.com") {
+		return true
+	}
+	if isUGreenCloudAppQQLink(parsed) {
+		return true
+	}
+	if !strings.EqualFold(parsed.Scheme, "intent") || !strings.EqualFold(parsed.Host, "h5.ugnas.com") {
+		return false
+	}
+	return strings.EqualFold(intentFragmentValue(parsed.Fragment, "scheme"), "ugreenpro") &&
+		strings.EqualFold(intentFragmentValue(parsed.Fragment, "package"), "com.ugreen.pro")
+}
+
+func intentFragmentValue(fragment, key string) string {
+	if !strings.HasPrefix(fragment, "Intent;") {
+		return ""
+	}
+	for _, part := range strings.Split(fragment, ";") {
+		name, value, ok := strings.Cut(part, "=")
+		if !ok {
+			continue
+		}
+		if strings.EqualFold(name, key) {
+			return value
+		}
+	}
+	return ""
+}
+
+func isUGreenCloudAppQQLink(parsed *url.URL) bool {
+	if parsed == nil {
+		return false
+	}
+	if !strings.EqualFold(parsed.Scheme, "https") && !strings.EqualFold(parsed.Scheme, "http") {
+		return false
+	}
+	if !strings.EqualFold(parsed.Host, "a.app.qq.com") || parsed.EscapedPath() != "/o/simple.jsp" {
+		return false
+	}
+	return strings.EqualFold(parsed.Query().Get("pkgname"), "com.ugreen.pro")
 }
 
 func ellipsize(value string, maxRunes int) string {

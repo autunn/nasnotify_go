@@ -7,6 +7,13 @@ import (
 	"testing"
 )
 
+const (
+	ugreenCloudAppQQLink   = "https://a.app.qq.com/o/simple.jsp?pkgname=com.ugreen.pro"
+	ugreenCloudIntentURL   = "intent://h5.ugnas.com/#Intent;scheme=ugreenpro;package=com.ugreen.pro;end"
+	ugreenCloudSchemeURL   = "ugreenpro://h5.ugnas.com"
+	ugreenCloudAppQQSchema = "https://a.app.qq.com/o/simple.jsp?pkgname=com.ugreen.pro&android_schema=ugreenpro%3A%2F%2Fh5.ugnas.com"
+)
+
 func TestRenderPNG(t *testing.T) {
 	card := Card{
 		Title:     "系统状态概览",
@@ -69,7 +76,7 @@ func TestBuildActionPanel(t *testing.T) {
 }
 
 func TestBuildActionPanelForUGreenCloudApp(t *testing.T) {
-	panel := buildActionPanel("ugreenpro://h5.ugnas.com")
+	panel := buildActionPanel(ugreenCloudAppQQLink)
 	if panel == nil {
 		t.Fatal("buildActionPanel() returned nil")
 	}
@@ -84,5 +91,18 @@ func TestBuildActionPanelForUGreenCloudApp(t *testing.T) {
 	}
 	if !isUGreenCloudDeepLink(panel.URL) {
 		t.Fatalf("isUGreenCloudDeepLink(%q) = false; want true", panel.URL)
+	}
+}
+
+func TestRecognizesUGreenCloudLinks(t *testing.T) {
+	for _, rawURL := range []string{
+		ugreenCloudAppQQLink,
+		ugreenCloudAppQQSchema,
+		ugreenCloudIntentURL,
+		ugreenCloudSchemeURL,
+	} {
+		if !isUGreenCloudDeepLink(rawURL) {
+			t.Fatalf("isUGreenCloudDeepLink(%q) = false; want true", rawURL)
+		}
 	}
 }

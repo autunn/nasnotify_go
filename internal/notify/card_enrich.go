@@ -6,7 +6,7 @@ import (
 	"nasnotify-go/internal/notifycard"
 )
 
-const ugreenCloudAppDeepLink = "ugreenpro://h5.ugnas.com"
+const ugreenCloudAppDeepLink = "https://a.app.qq.com/o/simple.jsp?pkgname=com.ugreen.pro"
 
 func enrichNotifyCard(card notifycard.Card) notifycard.Card {
 	if strings.TrimSpace(card.ActionURL) != "" {
