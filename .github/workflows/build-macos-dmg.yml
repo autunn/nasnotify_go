@@ -1,4 +1,4 @@
-name: Build signed macOS DMG
+name: Build unsigned macOS DMG
 
 on:
   workflow_dispatch:
@@ -35,100 +35,17 @@ jobs:
             echo "APP_VERSION=v$(date +'%Y.%m.%d')-${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
           fi
 
-      - name: Import Developer ID certificate
-        env:
-          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
-          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-          MACOS_CODESIGN_IDENTITY_OVERRIDE: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
-        run: |
-          set -euo pipefail
-          : "${MACOS_CERTIFICATE_P12_BASE64:?Missing secret MACOS_CERTIFICATE_P12_BASE64}"
-          : "${MACOS_CERTIFICATE_PASSWORD:?Missing secret MACOS_CERTIFICATE_PASSWORD}"
-
-          CERTIFICATE_PATH="$RUNNER_TEMP/developer-id-application.p12"
-          KEYCHAIN_PATH="$RUNNER_TEMP/nasnotify-signing.keychain-db"
-          KEYCHAIN_PASSWORD="$(uuidgen)"
-
-          printf '%s' "$MACOS_CERTIFICATE_P12_BASE64" | base64 -D > "$CERTIFICATE_PATH"
-
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import "$CERTIFICATE_PATH" \
-            -P "$MACOS_CERTIFICATE_PASSWORD" \
-            -A \
-            -t cert \
-            -f pkcs12 \
-            -k "$KEYCHAIN_PATH"
-          security set-key-partition-list \
-            -S apple-tool:,apple:,codesign: \
-            -s \
-            -k "$KEYCHAIN_PASSWORD" \
-            "$KEYCHAIN_PATH"
-          security list-keychains -d user -s "$KEYCHAIN_PATH"
-
-          if [[ -n "$MACOS_CODESIGN_IDENTITY_OVERRIDE" ]]; then
-            IDENTITY="$MACOS_CODESIGN_IDENTITY_OVERRIDE"
-          else
-            IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
-              | sed -n 's/.*"\(Developer ID Application:.*\)".*/\1/p' \
-              | head -n 1)"
-          fi
-
-          if [[ -z "$IDENTITY" ]]; then
-            echo "Developer ID Application identity was not found in the imported certificate." >&2
-            security find-identity -v -p codesigning "$KEYCHAIN_PATH" || true
-            exit 1
-          fi
-
-          echo "MACOS_CODESIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
-          echo "MACOS_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
-          echo "Using codesign identity: $IDENTITY"
-
-      - name: Prepare App Store Connect API key
-        env:
-          APP_STORE_CONNECT_API_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8_BASE64 }}
-          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-        run: |
-          set -euo pipefail
-
-          if [[ -z "$APP_STORE_CONNECT_API_KEY_P8_BASE64" ]]; then
-            echo "No App Store Connect API key secret provided; Apple ID notarization secrets may be used instead."
-            exit 0
-          fi
-
-          : "${APP_STORE_CONNECT_KEY_ID:?Missing secret APP_STORE_CONNECT_KEY_ID}"
-
-          API_KEY_PATH="$RUNNER_TEMP/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
-          printf '%s' "$APP_STORE_CONNECT_API_KEY_P8_BASE64" | base64 -D > "$API_KEY_PATH"
-          chmod 600 "$API_KEY_PATH"
-          echo "APP_STORE_CONNECT_API_KEY_PATH=$API_KEY_PATH" >> "$GITHUB_ENV"
-
-      - name: Build, sign, notarize and staple DMG
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      - name: Build unsigned DMG
         run: |
           set -euo pipefail
           VERSION="$APP_VERSION" \
             BUILD_VERSION="$GITHUB_RUN_NUMBER" \
-            SIGN_AND_NOTARIZE=1 \
+            SIGN_AND_NOTARIZE=0 \
             CREATE_DMG=1 \
-            NOTARIZE_DMG=1 \
             ./scripts/build-macos-app.sh
 
       - name: Upload DMG
         uses: actions/upload-artifact@v4
         with:
-          name: NasNotify-Go-macOS-dmg
+          name: NasNotify-Go-macOS-unsigned-dmg
           path: dist/NasNotify-Go-macOS-*.dmg
-
-      - name: Cleanup signing keychain
-        if: always()
-        run: |
-          if [[ -n "${MACOS_KEYCHAIN_PATH:-}" ]]; then
-            security delete-keychain "$MACOS_KEYCHAIN_PATH" || true
-          fi

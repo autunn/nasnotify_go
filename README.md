@@ -128,23 +128,25 @@ CPU1
 
 查询类命令会优先返回黑金图片卡片；`唤醒` / `wol` 会向后台配置的本机绿联 NAS 发送 WOL 魔术包。
 
-## macOS 构建、签名与公证
+## macOS 构建
 
-macOS 产物使用 `scripts/build-macos-app.sh` 统一构建。脚本会构建 Go 后端、Vite 前端、Swift 桌面窗口壳应用，并生成 DMG。正式发布时会按 Apple Developer ID 流程执行：
+macOS 产物使用 `scripts/build-macos-app.sh` 统一构建。脚本会构建 Go 后端、Vite 前端、Swift 桌面窗口壳应用，并生成未签名、未公证的自用 DMG。
 
-1. 使用 `Developer ID Application` 证书签名后端二进制、Swift 主程序和 `.app`。
-2. 启用 hardened runtime 并带时间戳签名。
-3. 提交 Apple notarization 公证。
-4. 将公证票据 staple 到 `.app` 和 DMG。
-5. 上传已签名、公证的 DMG artifact。
-
-本地普通构建：
+本地构建：
 
 ```bash
 ./scripts/build-macos-app.sh
 ```
 
-本地正式签名公证构建：
+GitHub Actions 的 `Build unsigned macOS DMG` 可以手动触发，不需要 Apple 付费开发者账号，也不需要配置证书 secrets。
+
+未公证 DMG 首次安装后，macOS 可能会拦截来源。自用时可以在 Mac 上执行一次：
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/NasNotify-Go.app"
+```
+
+如果以后有 Apple Developer Program 账号，脚本仍保留正式签名公证能力：
 
 ```bash
 export MACOS_CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)"
@@ -152,49 +154,7 @@ export APPLE_NOTARY_KEYCHAIN_PROFILE="nasnotify-notary"
 SIGN_AND_NOTARIZE=1 ./scripts/build-macos-app.sh
 ```
 
-也可以不用 keychain profile，改用：
-
-```bash
-export APPLE_ID="apple@example.com"
-export APPLE_TEAM_ID="TEAMID"
-export APPLE_APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"
-```
-
-GitHub Actions 的 `Build signed macOS DMG` 需要手动触发，并需要配置以下 secrets：
-
-```text
-MACOS_CERTIFICATE_P12_BASE64       # Developer ID Application 证书和私钥导出的 p12，再 base64
-MACOS_CERTIFICATE_PASSWORD         # p12 导出密码
-MACOS_CODESIGN_IDENTITY            # 可选，例：Developer ID Application: Your Name (TEAMID)
-APPLE_ID                           # 使用 Apple ID 公证时需要
-APPLE_TEAM_ID                      # 使用 Apple ID 公证时需要
-APPLE_APP_SPECIFIC_PASSWORD        # 使用 Apple ID 公证时需要
-```
-
-如果使用 App Store Connect API Key 公证，则改为配置：
-
-```text
-APP_STORE_CONNECT_API_KEY_P8_BASE64
-APP_STORE_CONNECT_KEY_ID
-APP_STORE_CONNECT_ISSUER_ID
-```
-
-导出 GitHub 所需的 p12 base64：
-
-```bash
-base64 -i DeveloperIDApplication.p12 | pbcopy
-```
-
-创建本地 notarytool profile：
-
-```bash
-xcrun notarytool store-credentials "nasnotify-notary" \
-  --apple-id "apple@example.com" \
-  --team-id "TEAMID" \
-  --password "xxxx-xxxx-xxxx-xxxx"
-```
-
-Windows 环境不能完整验证 Swift/macOS app 打包、Developer ID 签名和 Apple 公证，但可以验证 Go 测试和 Vite 构建。
+Windows 环境不能完整验证 Swift/macOS app 打包，但可以验证 Go 测试和 Vite 构建。
 
 ## Docker
 
