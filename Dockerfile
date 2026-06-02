@@ -10,12 +10,12 @@ ARG TARGETVARIANT
 WORKDIR /app
 RUN apk add --no-cache git
 
-# 复制整个项目（包含 go.mod, cmd, internal, frontend 等）
-COPY . .
-
+COPY go.mod go.sum ./
 RUN go mod download
 
-# 核心修改：将编译目标路径从 . 改为 ./cmd/nasnotify
+COPY cmd ./cmd
+COPY internal ./internal
+
 RUN target_arch="${TARGETARCH:-$(go env GOARCH)}" \
     && if [ "${target_arch}" = "arm" ]; then \
         target_arm="${TARGETVARIANT#v}"; \
@@ -28,9 +28,14 @@ RUN target_arch="${TARGETARCH:-$(go env GOARCH)}" \
 # 构建 Vite 前端，最终镜像会把 dist 放到 /app/www
 FROM --platform=$BUILDPLATFORM node:24-alpine AS frontend
 WORKDIR /app/frontend/ugreen-app
+RUN apk add --no-cache git
 COPY frontend/ugreen-app/package*.json ./
 RUN npm ci
 COPY frontend/ugreen-app/ ./
+RUN git init -q . \
+    && git config user.email "build@nasnotify.local" \
+    && git config user.name "NasNotify Docker Build" \
+    && git commit --allow-empty -qm "frontend build snapshot"
 RUN npm run build
 
 # ==========================================

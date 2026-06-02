@@ -31,7 +31,7 @@ nasnotify_go/
 └── go.mod
 ```
 
-运行时会使用当前工作目录下的 `config/` 和 `data/` 保存配置、登录态与通知记录。
+运行时会使用 `data/` 保存配置、登录态与 ClawBot 状态，使用 `log/` 保存运行日志。
 
 ## 本地运行
 
@@ -196,7 +196,23 @@ docker compose --profile hostnet up -d nasnotify-hostnet
 ./log
 ```
 
-Docker 镜像会先构建 Vite 前端，再把 `dist` 复制到最终镜像的 `/app/www`。如需本地手动构建：
+Docker 镜像会先构建 Vite 前端，再把 `dist` 复制到最终镜像的 `/app/www`。
+
+如需验证 Compose 配置：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\check-docker-compose.ps1
+```
+
+如需本地构建镜像并用本地镜像启动：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\check-docker-compose.ps1 -Build -SmokeTest
+```
+
+本地构建会叠加 `docker-compose.local.yml`，把镜像标签改为 `nasnotify-go:local`，不会影响默认使用的 `ghcr.io/autunn/nasnotify-go:latest`。
+
+也可以直接使用 Docker 命令手动构建：
 
 ```bash
 docker build -t nasnotify-go .
@@ -250,6 +266,7 @@ node --check frontend/ugreen-app/src/main.js
 npm --prefix frontend/ugreen-app ci
 npm --prefix frontend/ugreen-app run build
 node scripts/build-ugreen-frontend.mjs
+powershell -ExecutionPolicy Bypass -File .\scripts\check-docker-compose.ps1 -Build -SmokeTest
 ```
 
 `node_modules/`、`frontend/ugreen-app/dist/`、`build/`、`dist/`、UPK 打包输出和 `ugcli` 二进制均不提交到仓库。

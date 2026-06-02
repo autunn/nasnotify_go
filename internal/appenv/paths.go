@@ -13,6 +13,9 @@ func DataDir() string {
 }
 
 func LogDir() string {
+	if dir := strings.TrimSpace(os.Getenv("UGAPP_LOG_DIR")); dir != "" {
+		return firstWritableDir([]string{dir})
+	}
 	return firstWritableDir(logDirCandidates())
 }
 
@@ -39,9 +42,6 @@ func dataDirCandidates() []string {
 
 func logDirCandidates() []string {
 	candidates := []string{}
-	if dir := strings.TrimSpace(os.Getenv("UGAPP_LOG_DIR")); dir != "" {
-		candidates = append(candidates, dir)
-	}
 	candidates = append(candidates, filepath.Join(DataDir(), "log"))
 	if dir := executableRootDir(); dir != "" {
 		candidates = append(candidates, filepath.Join(dir, "log"))
@@ -65,9 +65,7 @@ func firstWritableDir(candidates []string) string {
 		}
 		_ = probe.Close()
 		_ = os.Remove(probe.Name())
-		if err := os.MkdirAll(filepath.Join(candidate, "config"), 0o700); err == nil {
-			return candidate
-		}
+		return candidate
 	}
 	return filepath.Join(os.TempDir(), appDirName)
 }

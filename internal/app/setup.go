@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -12,7 +13,10 @@ import (
 	"nasnotify-go/internal/notify"
 )
 
-var setupToken string
+var (
+	setupTokenMu sync.Mutex
+	setupToken   string
+)
 
 type setupRequest struct {
 	InitToken     string           `json:"init_token"`
@@ -41,10 +45,21 @@ type bootstrapResponse struct {
 	SetupToken    string           `json:"setup_token,omitempty"`
 }
 
-func ensureSetupToken() {
+func ensureSetupToken() string {
+	setupTokenMu.Lock()
+	defer setupTokenMu.Unlock()
+
 	if setupToken == "" {
 		setupToken = randomHex(16)
 	}
+	return setupToken
+}
+
+func resetSetupToken() {
+	setupTokenMu.Lock()
+	defer setupTokenMu.Unlock()
+
+	setupToken = ""
 }
 
 func buildBootstrapResponse(c *gin.Context, version string) bootstrapResponse {
@@ -55,8 +70,7 @@ func buildBootstrapResponse(c *gin.Context, version string) bootstrapResponse {
 		Config:        config.SanitizedConfigForWeb(),
 	}
 	if !resp.Initialized {
-		ensureSetupToken()
-		resp.SetupToken = setupToken
+		resp.SetupToken = ensureSetupToken()
 	}
 	return resp
 }
@@ -73,8 +87,8 @@ func performInitialSetup(req setupRequest) (int, string) {
 	if config.IsInitialized() {
 		return http.StatusForbidden, "system already initialized"
 	}
-	ensureSetupToken()
-	if !secureCompare(req.InitToken, setupToken) {
+	expectedToken := ensureSetupToken()
+	if !secureCompare(req.InitToken, expectedToken) {
 		return http.StatusForbidden, "invalid setup token"
 	}
 	password := strings.TrimSpace(req.AdminPassword)
@@ -103,7 +117,7 @@ func performInitialSetup(req setupRequest) (int, string) {
 			log.Printf("sync enterprise wechat menu failed: %v", err)
 		}
 	}()
-	setupToken = ""
+	resetSetupToken()
 	return http.StatusOK, ""
 }
 

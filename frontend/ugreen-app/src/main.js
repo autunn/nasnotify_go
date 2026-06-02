@@ -7,6 +7,8 @@ const DEFAULT_UGOS_PREFIX = "/ugreen/v1";
 const HOST_API_BASE = "/api";
 const DESIGN_VIEWPORT_WIDTH = 1200;
 const DESIGN_VIEWPORT_HEIGHT = 800;
+const SETUP_VIEWPORT_WIDTH = 1320;
+const SETUP_VIEWPORT_HEIGHT = 960;
 const CANONICAL_API_BASE_CANDIDATES = [
   HOST_API_BASE,
   `${DEFAULT_UGOS_PREFIX}/${APP_PROXY_PATH}/api`,
@@ -46,14 +48,27 @@ function updateAppScale() {
   if (typeof window === "undefined" || typeof document === "undefined") {
     return;
   }
-  const widthScale = window.innerWidth / DESIGN_VIEWPORT_WIDTH;
-  const heightScale = window.innerHeight / DESIGN_VIEWPORT_HEIGHT;
-  const scale = Math.max(0.78, Math.min(1.08, Math.min(widthScale, heightScale)));
+  const previewMode = currentPreviewMode();
+  const inferredView = previewMode || currentView();
+  const designWidth = inferredView === "setup" ? SETUP_VIEWPORT_WIDTH : DESIGN_VIEWPORT_WIDTH;
+  const designHeight = inferredView === "setup" ? SETUP_VIEWPORT_HEIGHT : DESIGN_VIEWPORT_HEIGHT;
+  const minScale = inferredView === "setup" ? 0.68 : 0.78;
+  const maxScale = inferredView === "setup" ? 1 : 1.08;
+  const widthScale = window.innerWidth / designWidth;
+  const heightScale = window.innerHeight / designHeight;
+  const scale = Math.max(minScale, Math.min(maxScale, Math.min(widthScale, heightScale)));
   document.documentElement.style.setProperty("--app-scale", scale.toFixed(4));
 }
 
 function isPreviewMode() {
   return Boolean(currentPreviewMode());
+}
+
+function hasNativeWindowActions() {
+  if (typeof window === "undefined" || isPreviewMode()) {
+    return false;
+  }
+  return window.isClient === true || typeof window.UGOSLauncher !== "undefined";
 }
 
 function previewConfig() {
@@ -507,7 +522,12 @@ function statusLabel(active, onText, offText) {
 function sidePillMarkup(item) {
   const label = typeof item === "string" ? item : item?.label;
   const tone = typeof item === "string" ? "" : item?.tone || "";
-  return `<span class="${tone ? `tone-${escapeHtml(tone)}` : ""}">${escapeHtml(label || "")}</span>`;
+  return `
+    <span class="hero-status-item ${tone ? `tone-${escapeHtml(tone)}` : ""}">
+      <i aria-hidden="true"></i>
+      <b>${escapeHtml(label || "")}</b>
+    </span>
+  `;
 }
 
 function shellTemplate({
@@ -522,8 +542,14 @@ function shellTemplate({
   viewClass = ""
 }) {
   const version = state.bootstrap?.version || "未初始化";
+  const showWindowActions = hasNativeWindowActions();
   const heroPills = sidePills.length
-    ? `<div class="hero-quick">${sidePills.map((item) => sidePillMarkup(item)).join("")}</div>`
+    ? `
+      <div class="hero-status-board">
+        <div class="hero-section-title">状态指示</div>
+        <div class="hero-quick">${sidePills.map((item) => sidePillMarkup(item)).join("")}</div>
+      </div>
+    `
     : "";
   const heroList = sideList.length
     ? `
@@ -537,7 +563,7 @@ function shellTemplate({
     : "";
   return `
     <div class="window-shell ${escapeHtml(viewClass)}">
-      <div class="window-toolbar">
+      <div class="window-toolbar ${showWindowActions ? "has-window-actions" : "without-window-actions"}">
         <div class="window-toolbar-drag">
           <div class="window-toolbar-copy">
             <span class="window-app-name">NasNotify</span>
@@ -545,13 +571,16 @@ function shellTemplate({
           </div>
           <div class="window-toolbar-note">本地通知控制台</div>
         </div>
-        <div class="window-toolbar-actions" aria-hidden="true"></div>
+        ${showWindowActions ? '<div class="window-toolbar-actions" aria-hidden="true"></div>' : ""}
       </div>
       <div class="shell ${escapeHtml(viewClass)}">
         <aside class="hero">
-          <div class="hero-topline">
-            <div class="hero-badge">UGREEN NAS</div>
-            <div class="hero-state">${isPreviewMode() ? "预览模式" : "桌面控制台"}</div>
+          <div class="hero-brand">
+            <div class="hero-mark" aria-hidden="true">N</div>
+            <div class="hero-topline">
+              <div class="hero-badge">UGREEN NAS</div>
+              <div class="hero-state">${isPreviewMode() ? "预览模式" : "桌面控制台"}</div>
+            </div>
           </div>
           <h1>${escapeHtml(sideTitle)}</h1>
           <p>${escapeHtml(sideText)}</p>
@@ -581,7 +610,7 @@ function shellTemplate({
 async function bindWindowChrome() {
   const toolbar = document.querySelector(".window-toolbar");
   const dragRegion = document.querySelector(".window-toolbar-drag");
-  if (!toolbar) {
+  if (!toolbar || !hasNativeWindowActions()) {
     return;
   }
 
@@ -950,13 +979,13 @@ function setupBody(config) {
           ${baseConfigForm(config, false, "two-desktop")}
         </div>
         <aside class="setup-side">
-          ${enterpriseWechatForm(config, "single-desktop")}
+          ${enterpriseWechatForm(config, "two-desktop")}
           <section class="section-card">
             <div class="section-head">
               <h3>微信 ClawBot 配置</h3>
               <span>默认本机</span>
             </div>
-            <div class="grid two single-desktop">
+            <div class="grid two two-desktop">
               <label class="field">
                 <span>ClawBot 网关地址</span>
                 <input type="text" id="wechat_gateway_url" value="${escapeHtml(config.wechat_gateway_url || "http://127.0.0.1:5091")}" placeholder="例如：http://127.0.0.1:5091">
@@ -986,22 +1015,23 @@ function setupBody(config) {
 
 function loginBody() {
   return `
-    <form id="loginForm" class="form-stack compact">
+    <form id="loginForm" class="form-stack compact login-form">
       ${state.flash ? `<div class="notice success">${escapeHtml(state.flash)}</div>` : ""}
       ${renderNotice("loginError")}
-      <section class="section-card">
-        <div class="section-head">
-          <h3>进入控制台</h3>
-          <span>认证</span>
+      <section class="section-card login-card">
+        <div class="login-card-head">
+          <div>
+            <span>AUTH</span>
+            <h3>进入控制台</h3>
+          </div>
+          <strong>本地后台</strong>
         </div>
         <label class="field">
           <span>管理员密码</span>
           <input type="password" id="login_password" placeholder="请输入管理员密码">
         </label>
+        <button type="submit" class="primary-btn login-submit-btn">登录</button>
       </section>
-      <div class="footer-actions">
-        <button type="submit" class="primary-btn">登录</button>
-      </div>
     </form>
   `;
 }

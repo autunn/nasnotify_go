@@ -20,6 +20,7 @@ const (
 	DefaultSystemStatusIntervalMinutes = 60
 	DefaultWechatGatewayURL            = "http://127.0.0.1:5091"
 	DefaultLocalNasHost                = "127.0.0.1"
+	DefaultLocalNasPort                = 9999
 )
 
 var (
@@ -93,26 +94,14 @@ func InitConfig() {
 	path := configPath()
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		log.Printf("create config dir failed, entering first-time setup mode: %v", err)
-		Config = AppConfig{
-			IntervalMinutes:             DefaultIntervalMinutes,
-			SystemStatusIntervalMinutes: DefaultSystemStatusIntervalMinutes,
-			WechatGatewayURL:            DefaultWechatGatewayURL,
-			LocalNasHost:                DefaultLocalNasHost,
-			LocalNasPort:                9999,
-		}
+		Config = defaultAppConfig()
 		return
 	}
 
 	data, err := os.ReadFile(path)
 	if err != nil {
 		log.Println("config not found, entering first-time setup mode")
-		Config = AppConfig{
-			IntervalMinutes:             DefaultIntervalMinutes,
-			SystemStatusIntervalMinutes: DefaultSystemStatusIntervalMinutes,
-			WechatGatewayURL:            DefaultWechatGatewayURL,
-			LocalNasHost:                DefaultLocalNasHost,
-			LocalNasPort:                9999,
-		}
+		Config = defaultAppConfig()
 		return
 	}
 
@@ -120,13 +109,7 @@ func InitConfig() {
 		backupPath := path + ".invalid"
 		_ = os.Rename(path, backupPath)
 		log.Printf("parse config failed, moved invalid config to %s and entered setup mode: %v", backupPath, err)
-		Config = AppConfig{
-			IntervalMinutes:             DefaultIntervalMinutes,
-			SystemStatusIntervalMinutes: DefaultSystemStatusIntervalMinutes,
-			WechatGatewayURL:            DefaultWechatGatewayURL,
-			LocalNasHost:                DefaultLocalNasHost,
-			LocalNasPort:                9999,
-		}
+		Config = defaultAppConfig()
 		return
 	}
 
@@ -242,6 +225,17 @@ func SaveConfig(newConfig AppConfig) error {
 	return nil
 }
 
+func defaultAppConfig() AppConfig {
+	return AppConfig{
+		IntervalMinutes:             DefaultIntervalMinutes,
+		SystemStatusIntervalMinutes: DefaultSystemStatusIntervalMinutes,
+		WechatGatewayURL:            DefaultWechatGatewayURL,
+		LocalNasName:                "本机绿联 NAS",
+		LocalNasHost:                DefaultLocalNasHost,
+		LocalNasPort:                DefaultLocalNasPort,
+	}
+}
+
 func normalizeConfigLocked() {
 	if Config.IntervalMinutes <= 0 {
 		Config.IntervalMinutes = DefaultIntervalMinutes
@@ -250,7 +244,7 @@ func normalizeConfigLocked() {
 		Config.SystemStatusIntervalMinutes = DefaultSystemStatusIntervalMinutes
 	}
 	if Config.LocalNasPort <= 0 {
-		Config.LocalNasPort = 9999
+		Config.LocalNasPort = DefaultLocalNasPort
 	}
 	Config.LocalNasHost, Config.LocalNasPort = normalizeLocalNasEndpoint(Config.LocalNasHost, Config.LocalNasPort)
 	if strings.TrimSpace(Config.LocalNasName) == "" {

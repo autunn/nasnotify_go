@@ -1,0 +1,16 @@
+services:
+  nasnotify:
+    image: nasnotify-go:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_VERSION: "${APP_VERSION:-dev}"
+
+  nasnotify-hostnet:
+    image: nasnotify-go:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_VERSION: "${APP_VERSION:-dev}"

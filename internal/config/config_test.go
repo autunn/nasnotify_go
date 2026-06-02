@@ -19,8 +19,8 @@ func TestNormalizeConfigLockedDefaults(t *testing.T) {
 	if Config.SystemStatusIntervalMinutes != DefaultSystemStatusIntervalMinutes {
 		t.Fatalf("expected system status interval default %v, got %v", DefaultSystemStatusIntervalMinutes, Config.SystemStatusIntervalMinutes)
 	}
-	if Config.LocalNasPort != 9999 {
-		t.Fatalf("expected local nas port default 9999, got %d", Config.LocalNasPort)
+	if Config.LocalNasPort != DefaultLocalNasPort {
+		t.Fatalf("expected local nas port default %d, got %d", DefaultLocalNasPort, Config.LocalNasPort)
 	}
 	if Config.LocalNasHost != DefaultLocalNasHost {
 		t.Fatalf("expected local nas host default %q, got %q", DefaultLocalNasHost, Config.LocalNasHost)

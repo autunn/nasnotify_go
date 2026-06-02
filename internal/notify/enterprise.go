@@ -39,6 +39,8 @@ var (
 	enterpriseAccessToken          string
 	enterpriseAccessTokenExpiresAt int64
 	enterpriseAccessTokenMu        sync.Mutex
+	enterpriseHTTPClient           = &http.Client{Timeout: 20 * time.Second}
+	enterpriseUploadHTTPClient     = &http.Client{Timeout: 45 * time.Second}
 )
 
 func EnterpriseWechatConfigured() bool {
@@ -195,11 +197,19 @@ func enterpriseToken(baseURL, corpID, corpSecret string) (string, error) {
 	}
 
 	endpoint := fmt.Sprintf("%s/cgi-bin/gettoken?corpid=%s&corpsecret=%s", baseURL, corpID, corpSecret)
-	resp, err := http.Get(endpoint)
+	resp, err := enterpriseHTTPClient.Get(endpoint)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode >= http.StatusBadRequest {
+		return "", fmt.Errorf("企业微信 gettoken HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
 
 	var payload struct {
 		ErrCode int64  `json:"errcode"`
@@ -207,7 +217,7 @@ func enterpriseToken(baseURL, corpID, corpSecret string) (string, error) {
 		Token   string `json:"access_token"`
 		Expires int64  `json:"expires_in"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+	if err := json.Unmarshal(raw, &payload); err != nil {
 		return "", err
 	}
 	if payload.ErrCode != 0 {
@@ -243,7 +253,7 @@ func enterpriseUploadImage(baseURL, token string, pngData []byte) (string, error
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := enterpriseUploadHTTPClient.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -252,6 +262,9 @@ func enterpriseUploadImage(baseURL, token string, pngData []byte) (string, error
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
+	}
+	if resp.StatusCode >= http.StatusBadRequest {
+		return "", fmt.Errorf("企业微信上传图片 HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
 	}
 	var payload struct {
 		ErrCode int64  `json:"errcode"`
@@ -275,7 +288,14 @@ func enterprisePostJSON(baseURL, route string, payload any, dst any) error {
 	if err != nil {
 		return err
 	}
-	resp, err := http.Post(baseURL+route, "application/json", bytes.NewReader(raw))
+	req, err := http.NewRequest(http.MethodPost, baseURL+route, bytes.NewReader(raw))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := enterpriseHTTPClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -284,6 +304,9 @@ func enterprisePostJSON(baseURL, route string, payload any, dst any) error {
 	responseRaw, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return err
+	}
+	if resp.StatusCode >= http.StatusBadRequest {
+		return fmt.Errorf("企业微信 API HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(responseRaw)))
 	}
 	var result struct {
 		ErrCode int64  `json:"errcode"`
