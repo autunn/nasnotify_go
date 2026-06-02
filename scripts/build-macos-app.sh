@@ -10,6 +10,7 @@ MARKETING_VERSION="${MARKETING_VERSION:-${VERSION#v}}"
 MARKETING_VERSION="${MARKETING_VERSION%%-*}"
 BUILD_VERSION="${BUILD_VERSION:-${GITHUB_RUN_NUMBER:-$(date +'%Y%m%d%H%M')}}"
 SIGN_AND_NOTARIZE="${SIGN_AND_NOTARIZE:-0}"
+ADHOC_SIGN="${ADHOC_SIGN:-1}"
 CREATE_DMG="${CREATE_DMG:-1}"
 NOTARIZE_DMG="${NOTARIZE_DMG:-1}"
 
@@ -133,6 +134,16 @@ sign_app_bundle() {
   xcrun stapler staple "$APP_DIR"
   xcrun stapler validate "$APP_DIR"
   spctl --assess --type execute --verbose=4 "$APP_DIR"
+}
+
+adhoc_sign_app_bundle() {
+  require_command codesign
+
+  echo "==> Ad-hoc sign app bundle for local use"
+  codesign --force --sign - --identifier "$BUNDLE_ID.backend" "$APP_DIR/Contents/Resources/nasnotify-go-app"
+  codesign --force --sign - "$APP_DIR/Contents/MacOS/$EXECUTABLE_NAME"
+  codesign --force --deep --sign - "$APP_DIR"
+  codesign --verify --deep --verbose=2 "$APP_DIR"
 }
 
 create_dmg() {
@@ -277,6 +288,8 @@ chmod +x "$APP_DIR/Contents/Resources/nasnotify-go-app"
 
 if [[ "$SIGN_AND_NOTARIZE" == "1" ]]; then
   sign_app_bundle
+elif [[ "$ADHOC_SIGN" == "1" ]]; then
+  adhoc_sign_app_bundle
 fi
 
 echo "==> Created: $APP_DIR"

@@ -130,7 +130,7 @@ CPU1
 
 ## macOS 构建
 
-macOS 产物使用 `scripts/build-macos-app.sh` 统一构建。脚本会构建 Go 后端、Vite 前端、Swift 桌面窗口壳应用，并生成未签名、未公证的自用 DMG。
+macOS 产物使用 `scripts/build-macos-app.sh` 统一构建。脚本会构建 Go 后端、Vite 前端、Swift 桌面窗口壳应用，并生成未公证的自用 DMG。没有 Apple Developer 账号时，脚本默认会做 ad-hoc 本地签名，保证 app bundle 内部代码签名结构完整。
 
 本地构建：
 
@@ -140,7 +140,7 @@ macOS 产物使用 `scripts/build-macos-app.sh` 统一构建。脚本会构建 G
 
 GitHub Actions 的 `Build unsigned macOS DMG` 可以手动触发，不需要 Apple 付费开发者账号，也不需要配置证书 secrets。
 
-未公证 DMG 首次安装后，macOS 可能会拦截来源。自用时可以在 Mac 上执行一次：
+未公证 DMG 首次安装后，macOS 可能会提示“已损坏，无法打开”。自用时先把应用拖到 `/Applications`，再在 Mac 上执行一次：
 
 ```bash
 xattr -dr com.apple.quarantine "/Applications/NasNotify-Go.app"
