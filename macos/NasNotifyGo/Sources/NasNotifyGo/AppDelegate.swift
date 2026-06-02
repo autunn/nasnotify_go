@@ -91,10 +91,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         resourcesURL.appendingPathComponent("www", isDirectory: true)
     }
 
-    private var serviceRunnerURL: URL {
-        resourcesURL.appendingPathComponent("service-runner.sh")
-    }
-
     private var appExecutableURL: URL {
         Bundle.main.executableURL!
     }
@@ -305,7 +301,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func currentServiceBuildMarker() -> String {
         var parts = [Bundle.main.bundlePath]
         appendFileMarker(backendURL, to: &parts)
-        appendFileMarker(serviceRunnerURL, to: &parts)
         appendFileMarker(bundledWWWURL.appendingPathComponent("index.html"), to: &parts)
         appendFileMarker(bundledWWWURL.appendingPathComponent("version.json"), to: &parts)
 
@@ -381,7 +376,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             let command = """
             cd \(appSupportURL.path.shellQuoted) && \
-            nohup \(serviceRunnerURL.path.shellQuoted) >> \(logFileURL.path.shellQuoted) 2>&1 & \
+            nohup \(backendURL.path.shellQuoted) >> \(logFileURL.path.shellQuoted) 2>&1 & \
             echo $! > \(pidFileURL.path.shellQuoted)
             """
 
@@ -595,7 +590,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
           <string>\(serviceLabel)</string>
           <key>ProgramArguments</key>
           <array>
-            <string>\(serviceRunnerURL.path)</string>
+            <string>\(backendURL.path)</string>
           </array>
           <key>WorkingDirectory</key>
           <string>\(appSupportURL.path)</string>

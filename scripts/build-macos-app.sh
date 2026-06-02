@@ -146,6 +146,34 @@ adhoc_sign_app_bundle() {
   codesign --verify --deep --verbose=2 "$APP_DIR"
 }
 
+verify_signed_dmg_contents() {
+  local dmg_path="$1"
+  local mount_point="$BUILD_DIR/dmg-verify"
+  local status=0
+
+  echo "==> Verify app inside DMG"
+  rm -rf "$mount_point"
+  mkdir -p "$mount_point"
+
+  hdiutil attach \
+    -nobrowse \
+    -readonly \
+    -mountpoint "$mount_point" \
+    "$dmg_path"
+
+  if ! codesign --verify --strict --deep --verbose=2 "$mount_point/$APP_NAME.app"; then
+    status=1
+  fi
+
+  if ! spctl --assess --type execute --verbose=4 "$mount_point/$APP_NAME.app"; then
+    status=1
+  fi
+
+  hdiutil detach "$mount_point"
+  rm -rf "$mount_point"
+  return "$status"
+}
+
 create_dmg() {
   local dmg_root="$BUILD_DIR/dmgroot"
   local dmg_path="$DIST_DIR/$APP_NAME-macOS-$GOARCH.dmg"
@@ -174,6 +202,7 @@ create_dmg() {
       xcrun stapler staple "$dmg_path"
       xcrun stapler validate "$dmg_path"
       spctl --assess --type open --context context:primary-signature --verbose=4 "$dmg_path"
+      verify_signed_dmg_contents "$dmg_path"
     fi
   fi
 
@@ -233,17 +262,6 @@ cp "$BUILD_DIR/nasnotify-go-app" "$APP_DIR/Contents/Resources/nasnotify-go-app"
 cp "$ICON_ICNS" "$APP_DIR/Contents/Resources/AppIcon.icns"
 cp "$ICON_PNG" "$APP_DIR/Contents/Resources/AppIcon.png"
 cp -R "$ROOT_DIR/frontend/ugreen-app/dist" "$APP_DIR/Contents/Resources/www"
-
-cat > "$APP_DIR/Contents/Resources/service-runner.sh" <<'RUNNER'
-#!/usr/bin/env bash
-set -euo pipefail
-APP_SUPPORT="$HOME/Library/Application Support/NasNotify-Go"
-mkdir -p "$APP_SUPPORT/config" "$APP_SUPPORT/data"
-cd "$APP_SUPPORT"
-RESOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec "$RESOURCE_DIR/nasnotify-go-app"
-RUNNER
-chmod +x "$APP_DIR/Contents/Resources/service-runner.sh"
 
 cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

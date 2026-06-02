@@ -138,7 +138,7 @@ macOS 产物使用 `scripts/build-macos-app.sh` 统一构建。脚本会构建 G
 ./scripts/build-macos-app.sh
 ```
 
-GitHub Actions 的 `Build macOS DMG` 可以手动触发。默认 `sign_and_notarize=false`，不需要 Apple 付费开发者账号，也不需要配置证书 secrets，但产物只是自用的未公证 DMG。
+GitHub Actions 的 `Build macOS DMG` 可以手动触发。默认 `sign_and_notarize=false`，不需要 Apple 付费开发者账号，也不需要配置证书 secrets，会生成自用的未公证 DMG。
 
 未公证 DMG 首次安装后，macOS 可能会提示“已损坏，无法打开”。自用时先把应用拖到 `/Applications`，再在 Mac 上执行一次：
 
