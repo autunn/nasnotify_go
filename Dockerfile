@@ -5,6 +5,7 @@ FROM --platform=$BUILDPLATFORM golang:alpine AS builder
 ARG APP_VERSION=v2026.05.01
 # 核心秘诀：接收 Docker 自动传进来的目标架构 (例如 amd64, arm64, arm)
 ARG TARGETARCH
+ARG TARGETVARIANT
 
 WORKDIR /app
 RUN apk add --no-cache git
@@ -15,9 +16,14 @@ COPY . .
 RUN go mod download
 
 # 核心修改：将编译目标路径从 . 改为 ./cmd/nasnotify
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
-    -ldflags "-s -w -X main.Version=${APP_VERSION}" \
-    -o nasnotify-go-app ./cmd/nasnotify
+RUN target_arch="${TARGETARCH:-$(go env GOARCH)}" \
+    && if [ "${target_arch}" = "arm" ]; then \
+        target_arm="${TARGETVARIANT#v}"; \
+        export GOARM="${target_arm:-7}"; \
+    fi \
+    && CGO_ENABLED=0 GOOS=linux GOARCH="${target_arch}" go build \
+        -ldflags "-s -w -X main.Version=${APP_VERSION}" \
+        -o nasnotify-go-app ./cmd/nasnotify
 
 # 构建 Vite 前端，最终镜像会把 dist 放到 /app/www
 FROM --platform=$BUILDPLATFORM node:24-alpine AS frontend
@@ -40,6 +46,13 @@ RUN apk add --no-cache ca-certificates tzdata \
 # 把极速编译好的二进制文件复制过来
 COPY --from=builder /app/nasnotify-go-app .
 COPY --from=frontend /app/frontend/ugreen-app/dist ./www
+ENV TZ=Asia/Shanghai \
+    UGAPP_DATA_DIR=/app/data \
+    UGAPP_LOG_DIR=/app/log \
+    UGAPP_WEB_DIR=/app/www \
+    UGAPP_HTTP_ADDR=:5080
 EXPOSE 5080
-VOLUME ["/app/data", "/app/config"]
+VOLUME ["/app/data", "/app/log"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 \
+    CMD wget -q --spider http://127.0.0.1:5080/healthz || exit 1
 CMD ["./nasnotify-go-app"]

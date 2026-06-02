@@ -1,0 +1,53 @@
+services:
+  nasnotify:
+    image: ghcr.io/autunn/nasnotify-go:latest
+    container_name: nasnotify-go
+    restart: unless-stopped
+    ports:
+      - "${NASNOTIFY_HTTP_PORT:-5080}:5080"
+    environment:
+      TZ: "${TZ:-Asia/Shanghai}"
+      UGAPP_DATA_DIR: /app/data
+      UGAPP_LOG_DIR: /app/log
+      UGAPP_WEB_DIR: /app/www
+      UGAPP_HTTP_ADDR: ":5080"
+    volumes:
+      - ./data:/app/data
+      - ./log:/app/log
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q --spider http://127.0.0.1:5080/healthz || exit 1"
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  nasnotify-hostnet:
+    image: ghcr.io/autunn/nasnotify-go:latest
+    container_name: nasnotify-go-hostnet
+    restart: unless-stopped
+    network_mode: host
+    profiles:
+      - hostnet
+    environment:
+      TZ: "${TZ:-Asia/Shanghai}"
+      UGAPP_DATA_DIR: /app/data
+      UGAPP_LOG_DIR: /app/log
+      UGAPP_WEB_DIR: /app/www
+      UGAPP_HTTP_ADDR: ":${NASNOTIFY_HTTP_PORT:-5080}"
+    volumes:
+      - ./data:/app/data
+      - ./log:/app/log
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q --spider http://127.0.0.1:${NASNOTIFY_HTTP_PORT:-5080}/healthz || exit 1"
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s

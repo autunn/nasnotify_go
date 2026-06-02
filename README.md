@@ -158,15 +158,56 @@ Windows 环境不能完整验证 Swift/macOS app 打包，但可以验证 Go 测
 
 ## Docker
 
+推荐使用 Docker Compose。先复制环境变量模板：
+
+```bash
+cp .env.example .env
+```
+
+普通 bridge 网络模式：
+
+```bash
+docker compose up -d nasnotify
+```
+
+启动后访问：
+
+```text
+http://127.0.0.1:5080
+```
+
+如果 Docker 运行在 NAS 所在局域网内，并且需要更稳定地访问内网 NAS 或使用远程唤醒，可以改用 host 网络模式：
+
+```bash
+docker compose --profile hostnet up -d nasnotify-hostnet
+```
+
+注意不要同时启动 `nasnotify` 和 `nasnotify-hostnet`，否则会争用同一个监听端口。
+
+配置、登录态和 ClawBot 状态会保存到：
+
+```text
+./data
+```
+
+运行日志会保存到：
+
+```text
+./log
+```
+
+Docker 镜像会先构建 Vite 前端，再把 `dist` 复制到最终镜像的 `/app/www`。如需本地手动构建：
+
 ```bash
 docker build -t nasnotify-go .
 docker run --rm -p 5080:5080 \
-  -v "$(pwd)/config:/app/config" \
+  -e UGAPP_DATA_DIR=/app/data \
+  -e UGAPP_LOG_DIR=/app/log \
+  -e UGAPP_WEB_DIR=/app/www \
   -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/log:/app/log" \
   nasnotify-go
 ```
-
-Dockerfile 会先构建 Vite 前端，再把 `dist` 复制到最终镜像的 `/app/www`。
 
 ## 绿联 UPK 构建
 

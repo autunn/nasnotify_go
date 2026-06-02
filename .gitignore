@@ -1,6 +1,8 @@
 /data/
+/log/
 /config/
 /config.json
+/.env
 /build/
 /dist/
 /frontend/ugreen-app/node_modules/
