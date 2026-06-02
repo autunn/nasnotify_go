@@ -34,10 +34,14 @@ const (
 	sendMessageTimeout      = 15 * time.Second
 	sendMediaTimeout        = 90 * time.Second
 	upstreamConnectTimeout  = 10 * time.Second
-	defaultChannelVersion   = "0.1.0"
+	defaultChannelVersion   = "2.4.3"
 	defaultILinkAppID       = "bot"
-	defaultBotAgent         = "NasNotify/0.1"
+	defaultILinkClientVer   = "132099"
+	defaultBotAgent         = "NasNotify-Go/0.1 OpenClaw/2.4.3"
 	defaultGatewayStatePath = "wechat_gateway"
+
+	sessionExpiredErrCode = -14
+	sessionPauseDuration  = time.Hour
 )
 
 type Status struct {
@@ -81,6 +85,8 @@ type runtimeState struct {
 	SyncBuf             string   `json:"sync_buf"`
 	LastError           string   `json:"last_error"`
 	UpstreamDiagnostics []string `json:"upstream_diagnostics,omitempty"`
+	SessionExpiredAt    string   `json:"session_expired_at,omitempty"`
+	SessionPausedUntil  string   `json:"session_paused_until,omitempty"`
 	EnteredAt           string   `json:"entered_at"`
 	LastInboundAt       string   `json:"last_inbound_at"`
 	LastOutboundAt      string   `json:"last_outbound_at"`
@@ -106,6 +112,20 @@ type upstreamEnvelope struct {
 	ErrCode int             `json:"errcode"`
 	ErrMsg  string          `json:"errmsg"`
 	Data    json.RawMessage `json:"data"`
+}
+
+type upstreamBusinessError struct {
+	Ret     int
+	ErrCode int
+	ErrMsg  string
+}
+
+func (e *upstreamBusinessError) Error() string {
+	message := strings.TrimSpace(e.ErrMsg)
+	if message == "" {
+		message = "unknown gateway error"
+	}
+	return fmt.Sprintf("wechat gateway upstream business error: ret=%d errcode=%d errmsg=%s", e.Ret, e.ErrCode, message)
 }
 
 type Service struct {
@@ -179,6 +199,8 @@ func (s *Service) GetStatus() Status {
 	s.Init()
 
 	s.mu.Lock()
+	now := time.Now()
+	sessionActive := s.sessionActiveLocked(now)
 
 	loginStatus := LoginStatus{
 		QRCodeURL:      valueOrEmpty(s.activeLogin, func(v *activeLogin) string { return v.QRCodeURL }),
@@ -196,8 +218,10 @@ func (s *Service) GetStatus() Status {
 		loginStatus.Tips = append(loginStatus.Tips, s.runtime.UpstreamDiagnostics...)
 	}
 
-	if s.account.Token != "" {
+	if sessionActive {
 		loginStatus.Status = "connected"
+	} else if strings.TrimSpace(s.account.Token) != "" && s.sessionPausedLocked(now) {
+		loginStatus.Status = "paused"
 	}
 	if s.activeLogin != nil {
 		loginStatus.Status = s.activeLogin.Status
@@ -206,7 +230,7 @@ func (s *Service) GetStatus() Status {
 
 	result := Status{
 		GatewayOnline:  true,
-		SessionActive:  s.account.Token != "",
+		SessionActive:  sessionActive,
 		BoundPeerReady: s.runtime.BoundPeerUserID != "" || s.runtime.LatestPeerUserID != "",
 		Login:          loginStatus,
 		LastError:      s.runtime.LastError,
@@ -302,12 +326,15 @@ func (s *Service) SendTextMessage(title, text string) error {
 	s.mu.Lock()
 	token := s.account.Token
 	baseURL := firstNonEmpty(s.account.BaseURL, fixedBaseURL)
-	peerUserID := firstNonEmpty(s.runtime.BoundPeerUserID, s.runtime.LatestPeerUserID)
-	contextToken := firstNonEmpty(s.runtime.LatestContextToken, s.runtime.BoundContextToken)
+	peerUserID, contextToken := s.targetPeerAndContextLocked()
+	sessionPaused := s.sessionPausedLocked(time.Now())
 	s.mu.Unlock()
 
 	if token == "" {
 		return fmt.Errorf("ClawBot 网关尚未完成登录")
+	}
+	if sessionPaused {
+		return fmt.Errorf("微信 ClawBot 会话被上游临时暂停，请稍后自动重试")
 	}
 	if peerUserID == "" {
 		return fmt.Errorf("还没有可用的 ClawBot 会话，请先向 ClawBot 发送一条消息")
@@ -342,6 +369,10 @@ func (s *Service) SendTextMessage(title, text string) error {
 	}
 
 	if err := s.doJSONRequest(http.MethodPost, baseURL, "ilink/bot/sendmessage", token, payload, sendMessageTimeout, nil); err != nil {
+		if isSessionExpiredError(err) {
+			s.handleSessionExpired(err)
+			return err
+		}
 		s.setLastError(err.Error())
 		return err
 	}
@@ -368,12 +399,15 @@ func (s *Service) SendImageMessage(pngData []byte) error {
 	s.mu.Lock()
 	token := s.account.Token
 	baseURL := firstNonEmpty(s.account.BaseURL, fixedBaseURL)
-	peerUserID := firstNonEmpty(s.runtime.BoundPeerUserID, s.runtime.LatestPeerUserID)
-	contextToken := firstNonEmpty(s.runtime.LatestContextToken, s.runtime.BoundContextToken)
+	peerUserID, contextToken := s.targetPeerAndContextLocked()
+	sessionPaused := s.sessionPausedLocked(time.Now())
 	s.mu.Unlock()
 
 	if token == "" {
 		return fmt.Errorf("ClawBot 网关尚未完成登录")
+	}
+	if sessionPaused {
+		return fmt.Errorf("微信 ClawBot 会话被上游临时暂停，请稍后自动重试")
 	}
 	if peerUserID == "" {
 		return fmt.Errorf("还没有可用的 ClawBot 会话，请先向 ClawBot 发送一条消息")
@@ -393,12 +427,20 @@ func (s *Service) SendImageMessage(pngData []byte) error {
 
 	uploaded, err := client.UploadFile(ctx, pngData, peerUserID, ilink.MediaImage)
 	if err != nil {
+		if isSessionExpiredError(err) {
+			s.handleSessionExpired(err)
+			return err
+		}
 		s.setLastError(err.Error())
 		return err
 	}
 
 	clientID, err := client.SendImage(ctx, peerUserID, contextToken, uploaded)
 	if err != nil {
+		if isSessionExpiredError(err) {
+			s.handleSessionExpired(err)
+			return err
+		}
 		s.setLastError(err.Error())
 		return err
 	}
@@ -440,6 +482,36 @@ func (s *Service) BindLatestPeer() bool {
 	s.runtime.BoundContextToken = s.runtime.LatestContextToken
 	s.persistLocked()
 	return true
+}
+
+func (s *Service) targetPeerAndContextLocked() (string, string) {
+	if strings.TrimSpace(s.runtime.BoundPeerUserID) != "" {
+		peerUserID := strings.TrimSpace(s.runtime.BoundPeerUserID)
+		if strings.TrimSpace(s.runtime.LatestPeerUserID) == peerUserID && strings.TrimSpace(s.runtime.LatestContextToken) != "" {
+			return peerUserID, strings.TrimSpace(s.runtime.LatestContextToken)
+		}
+		return peerUserID, strings.TrimSpace(s.runtime.BoundContextToken)
+	}
+	return strings.TrimSpace(s.runtime.LatestPeerUserID), strings.TrimSpace(s.runtime.LatestContextToken)
+}
+
+func (s *Service) sessionActiveLocked(now time.Time) bool {
+	return strings.TrimSpace(s.account.Token) != "" && !s.sessionPausedLocked(now)
+}
+
+func (s *Service) sessionPausedLocked(now time.Time) bool {
+	return !s.sessionPausedUntilLocked(now).IsZero()
+}
+
+func (s *Service) sessionPausedUntilLocked(now time.Time) time.Time {
+	if strings.TrimSpace(s.account.Token) == "" {
+		return time.Time{}
+	}
+	pausedUntil := parseStateTime(s.runtime.SessionPausedUntil)
+	if pausedUntil.IsZero() || !now.Before(pausedUntil) {
+		return time.Time{}
+	}
+	return pausedUntil
 }
 
 func (s *Service) qrPollLoop(sessionKey string) {
@@ -487,6 +559,19 @@ func (s *Service) qrPollLoop(sessionKey string) {
 			if strings.TrimSpace(response.RedirectHost) != "" {
 				s.activeLogin.CurrentAPIBaseURL = "https://" + strings.TrimSpace(response.RedirectHost)
 			}
+		case "binded_redirect":
+			if strings.TrimSpace(s.account.Token) != "" {
+				s.runtime.LastError = ""
+				s.runtime.UpstreamDiagnostics = nil
+				s.runtime.SessionExpiredAt = ""
+				s.runtime.SessionPausedUntil = ""
+				s.activeLogin = nil
+				s.persistLocked()
+				s.mu.Unlock()
+				go s.ensureMonitorLoop()
+				return
+			}
+			s.runtime.LastError = "微信提示此 ClawBot 已绑定，但本地没有可用凭据，请重新扫码登录。"
 		case "expired":
 			s.runtime.LastError = "二维码已过期，请重新生成。"
 			s.activeLogin = nil
@@ -502,6 +587,8 @@ func (s *Service) qrPollLoop(sessionKey string) {
 				s.runtime.EnteredAt = nowString()
 				s.runtime.LastError = ""
 				s.runtime.UpstreamDiagnostics = nil
+				s.runtime.SessionExpiredAt = ""
+				s.runtime.SessionPausedUntil = ""
 				s.activeLogin = nil
 				s.persistLocked()
 				s.mu.Unlock()
@@ -531,6 +618,20 @@ func (s *Service) ensureMonitorLoop() {
 	}()
 
 	for {
+		s.mu.Lock()
+		pausedUntil := s.sessionPausedUntilLocked(time.Now())
+		s.mu.Unlock()
+		if !pausedUntil.IsZero() {
+			sleepFor := time.Until(pausedUntil)
+			if sleepFor > 30*time.Second {
+				sleepFor = 30 * time.Second
+			}
+			if sleepFor > 0 {
+				time.Sleep(sleepFor)
+			}
+			continue
+		}
+
 		s.mu.Lock()
 		token := s.account.Token
 		baseURL := firstNonEmpty(s.account.BaseURL, fixedBaseURL)
@@ -563,13 +664,20 @@ func (s *Service) ensureMonitorLoop() {
 			},
 		}, getUpdatesTimeout, &response)
 		if err != nil {
+			if isSessionExpiredError(err) {
+				s.handleSessionExpired(err)
+				return
+			}
 			s.setNetworkError(err, baseURL, "拉取微信消息")
 			time.Sleep(2 * time.Second)
 			continue
 		}
 
 		s.mu.Lock()
+		s.runtime.LastError = ""
 		s.runtime.UpstreamDiagnostics = nil
+		s.runtime.SessionExpiredAt = ""
+		s.runtime.SessionPausedUntil = ""
 		if strings.TrimSpace(response.GetUpdatesBuf) != "" {
 			s.runtime.SyncBuf = strings.TrimSpace(response.GetUpdatesBuf)
 		}
@@ -637,6 +745,22 @@ func (s *Service) setNetworkError(err error, baseURL, action string) {
 	message := s.decorateUpstreamError(err, baseURL, action)
 	s.mu.Lock()
 	s.runtime.LastError = message
+	s.persistLocked()
+	s.mu.Unlock()
+}
+
+func (s *Service) handleSessionExpired(err error) {
+	if err != nil {
+		log.Printf("wechat gateway session expired: %v", err)
+	}
+	now := time.Now()
+	message := "微信 ClawBot 会话被上游临时暂停（errcode=-14），已按官方逻辑等待 1 小时后自动重试。"
+
+	s.mu.Lock()
+	s.runtime.SessionExpiredAt = formatStateTime(now)
+	s.runtime.SessionPausedUntil = formatStateTime(now.Add(sessionPauseDuration))
+	s.runtime.LastError = message
+	s.runtime.UpstreamDiagnostics = nil
 	s.persistLocked()
 	s.mu.Unlock()
 }
@@ -715,7 +839,7 @@ func (s *Service) doJSONRequest(method, baseURL, endpoint, token string, payload
 			if message == "" {
 				message = "unknown gateway error"
 			}
-			return fmt.Errorf("wechat gateway upstream business error: ret=%d errcode=%d errmsg=%s", envelope.Ret, envelope.ErrCode, message)
+			return &upstreamBusinessError{Ret: envelope.Ret, ErrCode: envelope.ErrCode, ErrMsg: message}
 		}
 		if len(envelope.Data) > 0 {
 			responsePayload = envelope.Data
@@ -753,7 +877,7 @@ func buildHeaders(token string) map[string]string {
 		"AuthorizationType":       "ilink_bot_token",
 		"X-WECHAT-UIN":            randomWechatUIN(),
 		"iLink-App-Id":            defaultILinkAppID,
-		"iLink-App-ClientVersion": "256",
+		"iLink-App-ClientVersion": defaultILinkClientVer,
 	}
 	if strings.TrimSpace(token) != "" {
 		headers["Authorization"] = "Bearer " + strings.TrimSpace(token)
@@ -802,6 +926,39 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+func isSessionExpiredError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var businessErr *upstreamBusinessError
+	if errors.As(err, &businessErr) {
+		return businessErr.Ret == sessionExpiredErrCode || businessErr.ErrCode == sessionExpiredErrCode
+	}
+
+	text := strings.ToLower(err.Error())
+	return strings.Contains(text, "ret=-14") ||
+		strings.Contains(text, "errcode=-14") ||
+		strings.Contains(text, `"ret":-14`) ||
+		strings.Contains(text, `"errcode":-14`)
+}
+
+func formatStateTime(t time.Time) string {
+	return t.Format("2006-01-02 15:04:05")
+}
+
+func parseStateTime(value string) time.Time {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}
+	}
+	for _, layout := range []string{"2006-01-02 15:04:05", time.RFC3339} {
+		if parsed, err := time.ParseInLocation(layout, value, time.Local); err == nil {
+			return parsed
+		}
+	}
+	return time.Time{}
+}
+
 func emptyToNil(value string) any {
 	if strings.TrimSpace(value) == "" {
 		return nil
@@ -810,7 +967,7 @@ func emptyToNil(value string) any {
 }
 
 func nowString() string {
-	return time.Now().Format("2006-01-02 15:04:05")
+	return formatStateTime(time.Now())
 }
 
 func buildGatewayTransport() *http.Transport {

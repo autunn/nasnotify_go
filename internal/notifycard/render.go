@@ -555,16 +555,16 @@ func drawActionPanel(dc *gg.Context, x, y, width float64, action actionPanel, m 
 
 	dc.SetFontFace(titleFace)
 	dc.SetColor(m.title)
-	dc.DrawString("扫码打开 NAS", left, top+lineHeight(titleFace)-4)
+	dc.DrawString(actionPanelTitle(action), left, top+lineHeight(titleFace)-4)
 
 	copyTop := top + lineHeight(titleFace) + 18
 	dc.SetFontFace(hintFace)
 	dc.SetColor(m.textSoft)
-	dc.DrawStringWrapped("右下角二维码可直接跳转到 NAS 页面，适合在手机端快速返回控制台。", left, copyTop, 0, 0, textWidth, 1.22, gg.AlignLeft)
+	dc.DrawStringWrapped(actionPanelHint(action), left, copyTop, 0, 0, textWidth, 1.22, gg.AlignLeft)
 
 	labelTop := y + actionPanelHeight - actionPanelInset - 88
 	dc.SetColor(m.actionHint)
-	dc.DrawString("NAS 地址", left, labelTop)
+	dc.DrawString(actionPanelLabel(action), left, labelTop)
 
 	urlBoxTop := labelTop + 16
 	urlBoxHeight := 64.0
@@ -623,10 +623,34 @@ func buildActionPanel(rawURL string) *actionPanel {
 	return panel
 }
 
+func actionPanelTitle(action actionPanel) string {
+	if isUGreenCloudDeepLink(action.URL) {
+		return "扫码打开绿联云"
+	}
+	return "扫码打开 NAS"
+}
+
+func actionPanelHint(action actionPanel) string {
+	if isUGreenCloudDeepLink(action.URL) {
+		return "右下角二维码可直接拉起手机绿联云 App，适合快速回到 NAS 管理入口。"
+	}
+	return "右下角二维码可直接跳转到 NAS 页面，适合在手机端快速返回控制台。"
+}
+
+func actionPanelLabel(action actionPanel) string {
+	if isUGreenCloudDeepLink(action.URL) {
+		return "跳转目标"
+	}
+	return "NAS 地址"
+}
+
 func formatActionDisplayURL(rawURL string) string {
 	parsed, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil || parsed == nil {
 		return ellipsize(strings.TrimSpace(rawURL), 72)
+	}
+	if isUGreenCloudDeepLink(rawURL) {
+		return "绿联云 App"
 	}
 	if parsed.Host == "" {
 		return ellipsize(strings.TrimSpace(rawURL), 72)
@@ -637,6 +661,14 @@ func formatActionDisplayURL(rawURL string) string {
 		return parsed.Host
 	}
 	return ellipsize(parsed.Host+path, 72)
+}
+
+func isUGreenCloudDeepLink(rawURL string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || parsed == nil {
+		return false
+	}
+	return strings.EqualFold(parsed.Scheme, "ugreenpro") && strings.EqualFold(parsed.Host, "h5.ugnas.com")
 }
 
 func ellipsize(value string, maxRunes int) string {

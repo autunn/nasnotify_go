@@ -67,3 +67,22 @@ func TestBuildActionPanel(t *testing.T) {
 		t.Fatalf("DisplayURL = %q, want %q", got, "nas.autunn.top/ugreen/v1/desktop")
 	}
 }
+
+func TestBuildActionPanelForUGreenCloudApp(t *testing.T) {
+	panel := buildActionPanel("ugreenpro://h5.ugnas.com")
+	if panel == nil {
+		t.Fatal("buildActionPanel() returned nil")
+	}
+	if panel.QRImage == nil {
+		t.Fatal("buildActionPanel() did not create QR image")
+	}
+	if got := panel.DisplayURL; got != "绿联云 App" {
+		t.Fatalf("DisplayURL = %q, want %q", got, "绿联云 App")
+	}
+	if got := actionPanelTitle(*panel); got != "扫码打开绿联云" {
+		t.Fatalf("actionPanelTitle() = %q, want %q", got, "扫码打开绿联云")
+	}
+	if !isUGreenCloudDeepLink(panel.URL) {
+		t.Fatalf("isUGreenCloudDeepLink(%q) = false; want true", panel.URL)
+	}
+}
